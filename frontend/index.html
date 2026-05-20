@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLE AI 사내 규정 탐색 에이전트</title>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- 1. Left Sidebar: Document Management & Categorization -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-brain-circuit neon-glow"></i>
+                    <span>SLE Agent</span>
+                </div>
+                <p class="subtitle">AI 사내 규정 탐색 시스템</p>
+            </div>
+
+            <!-- Drag & Drop Upload Zone -->
+            <section class="upload-section">
+                <h3><i class="fa-solid fa-file-arrow-up"></i> 문서 업로드</h3>
+                <div id="drop-zone" class="drop-zone">
+                    <i class="fa-solid fa-cloud-arrow-up cloud-icon"></i>
+                    <p class="upload-msg">PDF, DOCX, PNG, JPG 파일을 마우스로 끌어오거나 클릭하세요.</p>
+                    <input type="file" id="file-input" multiple accept=".pdf,.docx,.png,.jpg,.jpeg" style="display: none;">
+                </div>
+                <div id="file-list" class="file-list"></div>
+                <button id="btn-analyze" class="btn btn-primary" disabled>
+                    <i class="fa-solid fa-magnifying-glass-chart"></i> 카테고리 초안 분석
+                </button>
+            </section>
+
+            <!-- SSE Progress Container -->
+            <div id="progress-container" class="progress-container hidden">
+                <div class="progress-title">
+                    <span>문서 분류 및 가공 중...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+                <div id="progress-file" class="progress-file">준비 중...</div>
+            </div>
+
+            <!-- Categories Dynamic Tree -->
+            <section class="category-section">
+                <div class="category-header">
+                    <h3><i class="fa-solid fa-folder-tree"></i> 카테고리 구조</h3>
+                    <button id="btn-confirm-trigger" class="btn btn-outline btn-sm hidden">
+                        <i class="fa-solid fa-check-double"></i> 구조 확정
+                    </button>
+                </div>
+                <div id="category-tree" class="category-tree">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-diagram-predecessor"></i>
+                        <p>문서를 업로드하고 카테고리를 추출하면 여기에 카테고리 맵이 표시됩니다.</p>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <!-- 2. Right Content Area: Main Chat UI -->
+        <main id="chat-container">
+            <!-- Header Status -->
+            <header id="chat-header">
+                <div class="header-left">
+                    <div class="status-indicator online"></div>
+                    <div>
+                        <h2>인공지능 규정 에이전트</h2>
+                        <p class="status-text">질문하시면 사내 규정에서 관련 조항과 탐색 경로를 정확히 안내합니다.</p>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button id="btn-reset-chat" class="btn btn-icon" title="대화 초기화">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Chat Message Feed -->
+            <section id="chat-feed" class="chat-feed">
+                <!-- Welcome Message -->
+                <div class="message assistant welcome">
+                    <div class="message-avatar">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div class="message-bubble-wrapper">
+                        <div class="message-bubble">
+                            안녕하세요! 사내 규정 탐색 에이전트입니다. 
+                            <br><br>
+                            📂 <strong>이용 방법:</strong>
+                            <ol>
+                                <li>좌측 <strong>문서 업로드</strong> 란에 사내 규정 문서들(인사, 보상, 복리후생, 휴가 등)을 업로드하세요.</li>
+                                <li><strong>카테고리 초안 분석</strong>을 눌러 생성된 대-소카테고리를 확인 및 확정하세요.</li>
+                                <li>문서 분류 처리가 완료되면, 이곳에 <strong>규정에 관한 궁금한 질문</strong>을 남겨주세요!</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chat Form Input Area -->
+            <footer id="chat-footer">
+                <form id="chat-form" class="chat-form">
+                    <input type="text" id="query-input" placeholder="육아휴직 신청 기간과 조건이 어떻게 되나요?" autocomplete="off" required>
+                    <button type="submit" id="btn-send" class="btn btn-send-icon">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </footer>
+        </main>
+    </div>
+
+    <!-- 3. Modal Dialog: Edit Categories Draft -->
+    <div id="category-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-pen-to-square"></i> 카테고리 초안 확인 및 편집</h2>
+                <button id="modal-close" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">LLM이 분석한 문서 구조 초안입니다. 소카테고리를 쉼표(,)로 구분하여 수정하거나 보강할 수 있습니다.</p>
+                <div id="modal-categories-list" class="modal-categories-list">
+                    <!-- Dynamic categories editing list -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-modal-cancel" class="btn btn-outline">취소</button>
+                <button id="btn-modal-confirm" class="btn btn-primary">카테고리 확정 및 문서 분류 시작</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script JS -->
+    <script src="app.js"></script>
+</body>
+</html>
