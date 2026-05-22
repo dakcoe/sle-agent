@@ -118,3 +118,11 @@ pythonenv/
 backend/.env
 backend/uploads/
 backend/storage/
+
+# Next.js
+.next/
+node_modules/
+
+# Environment
+.env.local
+.env*.local
