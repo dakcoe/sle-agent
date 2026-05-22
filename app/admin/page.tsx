@@ -147,6 +147,7 @@ function DocsPanel() {
   const [serverFiles, setServerFiles] = useState<string[]>([]);
   const [categoryDraft, setCategoryDraft] = useState<TreeNode[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [progress, setProgress] = useState<{ pct: number; msg: string } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalTree, setModalTree] = useState<TreeNode[]>([]);
@@ -188,35 +189,56 @@ function DocsPanel() {
     setPendingFiles(prev => [...prev, ...toAdd]);
   }
 
+  async function runWithConcurrency<T>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T, index: number) => Promise<void>
+  ) {
+    let idx = 0;
+    async function worker() {
+      while (idx < items.length) {
+        const i = idx++;
+        await fn(items[i], i);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  }
+
   async function handleAnalyze() {
     if (!pendingFiles.length) return;
     setAnalyzing(true);
+    setAnalyzeProgress({ done: 0, total: pendingFiles.length, current: '업로드 중...' });
     try {
-      // Upload all files
-      for (const f of pendingFiles) {
+      // Upload all files (5 in parallel)
+      await runWithConcurrency(pendingFiles, 5, async (f) => {
         const form = new FormData();
         form.append('file', f);
         const res = await authFetch('/api/upload', { method: 'POST', body: form });
         if (!res.ok) throw new Error(`업로드 실패: ${f.name}`);
-      }
+      });
 
-      // Analyze each file individually
-      const trees: TreeNode[][] = [];
-      for (const f of pendingFiles) {
+      // Analyze each file (3 in parallel to avoid rate limits)
+      const trees: TreeNode[][] = new Array(pendingFiles.length).fill(null);
+      let done = 0;
+      await runWithConcurrency(pendingFiles, 3, async (f, i) => {
+        setAnalyzeProgress({ done, total: pendingFiles.length, current: f.name });
         const res = await authFetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filename: f.name }),
         });
         const data = await res.json();
-        if (data.tree?.length) trees.push(data.tree);
-      }
+        trees[i] = data.tree || [];
+        done++;
+        setAnalyzeProgress({ done, total: pendingFiles.length, current: f.name });
+      });
 
       // Merge all trees into one
+      const validTrees = trees.filter(t => t?.length);
       const mergeRes = await authFetch('/api/analyze/merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trees, filenames: pendingFiles.map(f => f.name) }),
+        body: JSON.stringify({ trees: validTrees, filenames: pendingFiles.map(f => f.name) }),
       });
       const merged = await mergeRes.json();
       const tree = merged.tree || [];
@@ -228,6 +250,7 @@ function DocsPanel() {
       showToast(String(err), 'error');
     } finally {
       setAnalyzing(false);
+      setAnalyzeProgress(null);
     }
   }
 
@@ -339,10 +362,22 @@ function DocsPanel() {
 
         <button className="btn btn-primary" disabled={analyzing || pendingFiles.length === 0} onClick={handleAnalyze}>
           {analyzing
-            ? <><i className="fa-solid fa-spinner fa-spin"></i> 분석 중...</>
+            ? (
+              <>
+                <i className="fa-solid fa-spinner fa-spin"></i>
+                {analyzeProgress
+                  ? ` 분석 중... (${analyzeProgress.done}/${analyzeProgress.total})`
+                  : ' 분석 중...'}
+              </>
+            )
             : <><i className="fa-solid fa-magnifying-glass-chart"></i> 카테고리 초안 분석</>
           }
         </button>
+        {analyzing && analyzeProgress && (
+          <div className="analyze-progress-hint">
+            <i className="fa-solid fa-file-lines"></i> {analyzeProgress.current}
+          </div>
+        )}
       </div>
 
       {progress && (

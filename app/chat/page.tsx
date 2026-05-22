@@ -76,23 +76,61 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, conversation_history: history }),
       });
-      const data = await res.json();
-      const answer = data.answer || '답변을 가져오지 못했습니다.';
 
+      if (!res.ok || !res.body) {
+        throw new Error(`서버 오류: ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalData: { answer?: string; source?: string; path_taken?: PathStep[] } = {};
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === 'progress') {
+              setMessages(prev => prev.map(m =>
+                m.thinking
+                  ? { ...m, content: event.message }
+                  : m
+              ));
+            } else if (event.type === 'done') {
+              finalData = event;
+            } else if (event.type === 'error') {
+              throw new Error(event.message);
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof SyntaxError) continue;
+            throw parseErr;
+          }
+        }
+      }
+
+      const answer = finalData.answer || '답변을 가져오지 못했습니다.';
       setMessages(prev => [
         ...prev.filter(m => !m.thinking),
         {
           role: 'assistant',
           content: answer,
-          source: data.source,
-          pathTaken: data.path_taken,
+          source: finalData.source,
+          pathTaken: finalData.path_taken,
         },
       ]);
 
       const newHistory: ConvHistory[] = [
         ...history,
         { role: 'user', content: question },
-        { role: 'assistant', content: answer, source: data.source },
+        { role: 'assistant', content: answer, source: finalData.source },
       ];
       setHistory(newHistory.slice(-20));
     } catch (err) {
@@ -147,7 +185,7 @@ export default function ChatPage() {
                 className="message-bubble"
                 dangerouslySetInnerHTML={{
                   __html: msg.thinking
-                    ? '<span class="dot-flashing"></span>'
+                    ? `<span class="dot-flashing"></span>${msg.content ? `<span class="progress-text"> ${escapeHtml(msg.content)}</span>` : ''}`
                     : escapeHtml(msg.content).replace(/\n/g, '<br>'),
                 }}
               />

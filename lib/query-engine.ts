@@ -194,7 +194,8 @@ async function searchDir(
   prefix: string,
   pathTaken: PathStep[],
   depth = 0,
-  maxDepth = 6
+  maxDepth = 6,
+  onProgress?: (msg: string) => void
 ): Promise<Omit<QueryResult, 'pathTaken'> | null> {
   if (depth > maxDepth) return null;
 
@@ -205,12 +206,14 @@ async function searchDir(
 
   for (const item of ranked) {
     if (item.type === 'folder') {
+      onProgress?.(`'${item.name}' 탐색 중...`);
       pathTaken.push({ name: item.name, type: 'folder', found: false });
       const result = await searchDir(
-        question, history, item.path, pathTaken, depth + 1, maxDepth
+        question, history, item.path, pathTaken, depth + 1, maxDepth, onProgress
       );
       if (result) return result;
     } else {
+      onProgress?.(`'${item.name}' 내용 확인 중...`);
       const { data, error } = await supabaseAdmin.storage
         .from(STORAGE_BUCKET)
         .download(item.path);
@@ -222,6 +225,7 @@ async function searchDir(
       pathTaken.push({ name: item.name, type: 'file', found: check.found });
 
       if (check.found) {
+        onProgress?.('답변 생성 중...');
         // Decode hex path and strip adminId prefix + .txt extension
         const rawPath = item.path.split('/').slice(1).join('/');
         const source = decodeStoragePath(rawPath).replace(/\.txt$/, '');
@@ -266,7 +270,8 @@ JSON으로만: {"need_research": true 또는 false}`;
 export async function runQuery(
   question: string,
   history: ConversationMessage[],
-  adminId: number
+  adminId: number,
+  onProgress?: (msg: string) => void
 ): Promise<QueryResult> {
   const storagePrefix = String(adminId);
   const pathTaken: PathStep[] = [];
@@ -275,8 +280,10 @@ export async function runQuery(
   if (history.length > 0) {
     const last = history[history.length - 1];
     if (last.role === 'assistant' && last.source) {
+      onProgress?.('이전 대화 맥락 확인 중...');
       const doResearch = await needsResearch(question, last.content, last.source);
       if (!doResearch) {
+        onProgress?.(`'${last.source}' 내용 확인 중...`);
         const filePath = `${storagePrefix}/${encodeStoragePath(`${last.source}.txt`)}`;
         const { data } = await supabaseAdmin.storage
           .from(STORAGE_BUCKET)
@@ -286,6 +293,7 @@ export async function runQuery(
           const content = await data.text();
           const check = await checkFound(question, last.source.split('/').pop()!, content);
           if (check.found) {
+            onProgress?.('답변 생성 중...');
             const answer = await generateAnswer(question, last.source, check.relevantSections, history);
             return {
               answer,
@@ -300,7 +308,8 @@ export async function runQuery(
     }
   }
 
-  const result = await searchDir(question, history, storagePrefix, pathTaken);
+  onProgress?.('규정 문서 탐색 시작...');
+  const result = await searchDir(question, history, storagePrefix, pathTaken, 0, 6, onProgress);
   if (result) return { ...result, pathTaken };
 
   return {

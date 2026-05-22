@@ -385,6 +385,8 @@ body {
 .dot-flashing::after { left: 16px; animation: dotFlashing 1s infinite alternate; animation-delay: 0.5s; }
 @keyframes dotFlashing { 0% { opacity: 0.3; } 100% { opacity: 1; } }
 .message.thinking .message-bubble { padding: 18px 24px; }
+.progress-text { font-size: 0.8rem; color: var(--text-muted); margin-left: 8px; vertical-align: middle; }
+.analyze-progress-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
 /* ── 모달 ─────────────────────────────────────────────────── */
 .modal-overlay {
