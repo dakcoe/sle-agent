@@ -16,26 +16,43 @@ def rank_dir_items(question: str, history: list, items: list) -> list:
     history_text = "\n".join([
         f"{m.get('role','user')}: {m.get('content','')}" for m in history[-2:]
     ])
-    names_list = "\n".join([
-        f"{i+1}. [{item['type']}] {item['name']}" for i, item in enumerate(items)
-    ])
+
+    # 폴더는 내부 항목 이름도 함께 표시해 Gemini가 맥락 파악 가능하도록
+    names_list_parts = []
+    for i, item in enumerate(items):
+        desc = f"{i+1}. [{item['type']}] {item['name']}"
+        if item["type"] == "폴더":
+            try:
+                children = [
+                    e.name[:-4] if e.name.endswith(".txt") else e.name
+                    for e in os.scandir(item["path"])
+                    if e.name != "categories.json"
+                ]
+                if children:
+                    desc += f" (하위: {', '.join(children[:6])})"
+            except Exception:
+                pass
+        names_list_parts.append(desc)
+
+    names_list = "\n".join(names_list_parts)
 
     prompt = f"""사용자 질문: {question}
 최근 대화: {history_text}
 
-다음 파일/폴더 이름 중 질문의 답변이 있을 가능성을 점수로 매겨줘.
+다음 번호별 파일/폴더 중 질문의 답변이 있을 가능성을 점수로 매겨줘.
+폴더의 경우 하위 항목 이름도 참고해.
 0: 매우 높음 | 1: 높음 | 2: 보통 | 3: 낮음 | 4: 관련 없음
 
 {names_list}
 
-JSON으로만 응답:
-{{"rankings": [{{"name": "이름", "score": 0}}]}}"""
+JSON으로만 응답 (번호는 위 목록의 번호):
+{{"rankings": [{{"index": 1, "score": 0}}]}}"""
 
     try:
         result = call_gemini_json(prompt)
-        score_map = {r["name"]: r.get("score", 4) for r in result.get("rankings", [])}
-        for item in items:
-            item["score"] = score_map.get(item["name"], 4)
+        index_scores = {r["index"]: r.get("score", 4) for r in result.get("rankings", [])}
+        for i, item in enumerate(items):
+            item["score"] = index_scores.get(i + 1, 4)
         filtered = [item for item in items if item["score"] <= RELEVANCE_CUTOFF]
         return sorted(filtered, key=lambda x: x["score"])
     except Exception as e:
