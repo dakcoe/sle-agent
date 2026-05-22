@@ -1,15 +1,51 @@
 import os
 import json
 import re
-from services.gemini_client import call_gemini_json, call_gemini
-from services.file_parser import parse_first_page, parse_file
+from services.gemini_client import call_gemini_json
+from services.file_parser import parse_first_page, get_chunks
 
-STORAGE_DIR = "storage"
 
-def propose_categories(uploaded_files: list[str]) -> list[dict]:
-    """
-    업로드된 파일들의 첫 페이지를 읽고 카테고리 초안 제안
-    """
+def _storage(admin_id: int) -> str:
+    return os.path.join("storage", str(admin_id))
+
+
+def safe_name(name: str) -> str:
+    return re.sub(r'[/\\:*?"<>|]', '_', name).strip()
+
+
+def _normalize_tree(data: list) -> list:
+    """구 형식(sub_categories)을 새 트리 형식(children)으로 변환"""
+    result = []
+    for item in data:
+        if "sub_categories" in item:
+            result.append({
+                "name": item["name"],
+                "children": [{"name": s, "children": []} for s in item.get("sub_categories", [])]
+            })
+        else:
+            children = item.get("children", [])
+            result.append({
+                "name": item["name"],
+                "children": _normalize_tree(children) if children else []
+            })
+    return result
+
+
+def get_leaf_paths(tree: list, prefix: str = "") -> list:
+    """트리에서 모든 리프 파일 경로 목록 반환 (상대경로/파일명.txt)"""
+    paths = []
+    for node in tree:
+        name = safe_name(node["name"])
+        path = (prefix + "/" + name) if prefix else name
+        children = node.get("children", [])
+        if children:
+            paths.extend(get_leaf_paths(children, path))
+        else:
+            paths.append(path + ".txt")
+    return paths
+
+
+def propose_categories(uploaded_files: list) -> list:
     summaries = []
     for path in uploaded_files:
         if not os.path.exists(path):
@@ -22,93 +58,119 @@ def propose_categories(uploaded_files: list[str]) -> list[dict]:
 
     nl = "\n"
     prompt = f"""다음은 여러 문서들의 파일명과 첫 페이지 내용이야.
-이 문서들을 분류하기 위한 카테고리 구조를 제안해줘.
+이 문서들을 분류하기 위한 디렉토리 트리 구조를 제안해줘.
+내용이 단순하면 1~2단계, 복잡하면 3~4단계까지 만들어도 돼.
+children이 비어있는 노드가 실제 파일(리프)이 되고, 나머지는 폴더야.
 
 {nl.join(summaries)}
 
 다음 JSON 형식으로만 응답해. 다른 텍스트는 절대 포함하지 마:
 {{
-  "categories": [
+  "tree": [
     {{
-      "name": "카테고리명",
-      "description": "한 줄 설명",
-      "sub_categories": ["소카테고리1", "소카테고리2"]
+      "name": "폴더명",
+      "children": [
+        {{
+          "name": "하위폴더 또는 파일명",
+          "children": []
+        }}
+      ]
     }}
   ]
 }}"""
 
     try:
         result = call_gemini_json(prompt)
-        return result.get("categories", [])
+        return result.get("tree", [])
     except Exception as e:
         print(f"Error proposing categories: {e}")
         return []
 
-def save_categories(categories: list[dict]):
-    """확정된 카테고리 구조를 categories.json에 저장하고 폴더 생성"""
-    os.makedirs(STORAGE_DIR, exist_ok=True)
 
-    with open(os.path.join(STORAGE_DIR, "categories.json"), "w", encoding="utf-8") as f:
-        json.dump({"categories": categories}, f, ensure_ascii=False, indent=2)
+def save_categories(tree: list, admin_id: int):
+    """트리 구조에 따라 폴더/파일 생성 — 항상 초기화"""
+    storage = _storage(admin_id)
+    os.makedirs(storage, exist_ok=True)
 
-    # 폴더 구조 생성
-    for cat in categories:
-        cat_name = cat["name"]
-        for sub in cat["sub_categories"]:
-            folder = os.path.join(STORAGE_DIR, cat_name)
-            os.makedirs(folder, exist_ok=True)
-            # 빈 txt 파일 초기화
-            filepath = os.path.join(folder, f"{sub}.txt")
-            if not os.path.exists(filepath):
-                with open(filepath, "w", encoding="utf-8") as f:
-                    pass
+    with open(os.path.join(storage, "categories.json"), "w", encoding="utf-8") as f:
+        json.dump({"tree": tree}, f, ensure_ascii=False, indent=2)
 
-def process_document(file_path: str, categories: list[dict]):
-    """
-    문서 전체를 읽고 각 소카테고리에 해당하는 내용을 분류해서 저장.
-    조항 번호, 항목 번호 등 원본 구조를 보존.
-    """
+    def create_node(node, parent_path):
+        name = safe_name(node["name"])
+        children = node.get("children", [])
+        if children:
+            folder_path = os.path.join(parent_path, name)
+            os.makedirs(folder_path, exist_ok=True)
+            for child in children:
+                create_node(child, folder_path)
+        else:
+            with open(os.path.join(parent_path, name + ".txt"), "w", encoding="utf-8") as f:
+                pass
+
+    for node in tree:
+        create_node(node, storage)
+
+
+def process_document(file_path: str, tree: list, admin_id: int):
     if not os.path.exists(file_path):
         return
 
-    full_text = parse_file(file_path)
+    storage = _storage(admin_id)
+    leaf_paths = get_leaf_paths(tree)
+    if not leaf_paths:
+        return
 
-    for cat in categories:
-        cat_name = cat["name"]
-        for sub in cat["sub_categories"]:
-            prompt = f"""다음 문서에서 [{cat_name} > {sub}]에 해당하는 내용만 추출해줘.
+    chunks = get_chunks(file_path)
+    source_name = os.path.basename(file_path)
+    leaf_list = "\n".join([f"{i+1}. {p}" for i, p in enumerate(leaf_paths)])
 
-조항 번호(제1조, 제2조 등), 항목 번호(1., 2., ①, ② 등), 제목 등 원본 구조를 그대로 유지해서 추출해줘.
-해당 내용이 전혀 없으면 빈 문자열만 반환해.
+    for chunk in chunks:
+        if not chunk.strip():
+            continue
+
+        prompt = f"""다음 텍스트에서 아래 각 경로에 해당하는 내용을 추출해줘.
+해당 내용이 없으면 빈 문자열로 남겨줘.
+조항 번호, 항목 번호, 원본 구조를 그대로 유지해서 추출해.
 설명이나 다른 텍스트는 절대 추가하지 마.
 
-[문서 내용]
-{full_text[:8000]}"""
+경로 목록:
+{leaf_list}
 
-            extracted = call_gemini(prompt).strip()
+[텍스트]
+{chunk[:3000]}
 
-            # 마크다운 ``` 블록이 섞여있다면 제거
-            if extracted.startswith("```"):
-                extracted = re.sub(r"^```(?:[a-zA-Z]+)?\n", "", extracted)
-                extracted = re.sub(r"\n```$", "", extracted)
-                extracted = extracted.strip()
+JSON으로만 응답:
+{{"extractions": [{{"path": "경로", "content": "추출내용"}}]}}"""
 
-            if extracted and extracted != "빈 문자열" and len(extracted) > 5:
-                folder = os.path.join(STORAGE_DIR, cat_name)
-                os.makedirs(folder, exist_ok=True)
-                filepath = os.path.join(folder, f"{sub}.txt")
-                with open(filepath, "a", encoding="utf-8") as f:
-                    f.write(f"\n\n--- 출처: {os.path.basename(file_path)} ---\n")
-                    f.write(extracted)
+        try:
+            result = call_gemini_json(prompt)
+            for item in result.get("extractions", []):
+                rel_path = item.get("path", "").strip()
+                content = item.get("content", "").strip()
 
-def get_categories() -> list[dict]:
-    """저장된 카테고리 구조 반환"""
-    path = os.path.join(STORAGE_DIR, "categories.json")
+                if not content or content == "빈 문자열" or len(content) < 5:
+                    continue
+                if content.startswith("에러가 발생했습니다:"):
+                    continue
+
+                full_path = os.path.join(storage, rel_path.replace("/", os.sep))
+                if os.path.exists(full_path):
+                    with open(full_path, "a", encoding="utf-8") as f:
+                        f.write(f"\n\n--- 출처: {source_name} ---\n")
+                        f.write(content)
+        except Exception as e:
+            print(f"Error processing chunk from {source_name}: {e}")
+
+
+def get_categories(admin_id: int) -> list:
+    path = os.path.join(_storage(admin_id), "categories.json")
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f).get("categories", [])
+            data = json.load(f)
+        raw = data.get("tree", data.get("categories", []))
+        return _normalize_tree(raw)
     except Exception as e:
         print(f"Error loading categories.json: {e}")
         return []

@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLE — AI 규정 탐색 에이전트</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&family=Noto+Sans+KR:wght@400;500;600&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#07070f;--s1:#0d0d1a;--s2:#111120;--b1:#161628;--b2:#1e1e38;
+  --t1:#e8eaf6;--t2:#9fa8da;--t3:#4a4a72;--t4:#252542;
+  --blue:#5c7cfa;--purple:#9c6cfa;--pink:#e879a0;
+  --green:#4ade80;--yellow:#fbbf24;--orange:#fb923c;--red:#f87171;
+  --teal:#2dd4bf;
+}
+body{background:var(--bg);color:var(--t1);font-family:'Noto Sans KR','Apple SD Gothic Neo',sans-serif;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;z-index:0;
+  background-image:linear-gradient(rgba(92,124,250,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(92,124,250,0.03) 1px,transparent 1px);
+  background-size:48px 48px;pointer-events:none;}
+.glow-orb{position:fixed;border-radius:50%;filter:blur(80px);opacity:.35;pointer-events:none;z-index:0;}
+.orb1{width:500px;height:500px;background:radial-gradient(circle,#5c7cfa22,transparent);top:-100px;left:-100px;}
+.orb2{width:400px;height:400px;background:radial-gradient(circle,#9c6cfa22,transparent);bottom:10%;right:-80px;}
+
+.wrap{max-width:980px;margin:0 auto;padding:0 24px;position:relative;z-index:1;}
+
+/* HEADER */
+header{padding:52px 0 0;text-align:center;}
+.badge{display:inline-flex;align-items:center;gap:8px;background:rgba(92,124,250,.08);border:1px solid rgba(92,124,250,.2);border-radius:20px;padding:4px 16px;margin-bottom:22px;}
+.bdot{width:6px;height:6px;border-radius:50%;background:var(--blue);box-shadow:0 0 8px var(--blue);}
+.badge span{font-size:11px;letter-spacing:.14em;color:var(--blue);text-transform:uppercase;font-family:'DM Mono',monospace;}
+h1{font-family:'Syne',sans-serif;font-size:clamp(22px,4vw,34px);font-weight:800;letter-spacing:-.03em;line-height:1.15;
+  background:linear-gradient(135deg,#e8eaf6 0%,#9fa8da 60%,#5c7cfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;}
+.subtitle{color:var(--t3);font-size:13px;margin-bottom:40px;}
+
+/* TABS */
+.tabs{display:flex;justify-content:center;gap:4px;background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:4px;width:fit-content;margin:0 auto 52px;}
+.tab{padding:8px 26px;border-radius:9px;border:none;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;background:transparent;color:var(--t3);font-family:'Noto Sans KR',sans-serif;}
+.tab.active{background:var(--s2);color:var(--t1);border:1px solid var(--b2);}
+
+.panel{display:none;}.panel.active{display:block;}
+
+/* ── ARCHITECTURE ── */
+.section-label{font-size:10px;letter-spacing:.18em;color:var(--t4);text-transform:uppercase;text-align:center;margin-bottom:16px;font-family:'DM Mono',monospace;}
+
+/* Pipeline blocks */
+.pipe-wrap{display:flex;flex-direction:column;gap:0;margin-bottom:48px;}
+.pipe-phase{margin-bottom:32px;}
+.phase-title{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.phase-dot{width:8px;height:8px;border-radius:50%;}
+.phase-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.02em;}
+.phase-sub{font-size:11px;color:var(--t3);margin-left:4px;}
+
+.nodes{display:flex;flex-direction:column;gap:6px;padding-left:18px;border-left:1px solid var(--b1);}
+.node{background:var(--s1);border:1px solid var(--b1);border-radius:9px;padding:12px 15px;cursor:pointer;transition:all .2s;position:relative;}
+.node:hover{border-color:var(--b2);}
+.node.open{border-color:var(--b2);background:var(--s2);}
+.node-header{display:flex;align-items:center;gap:10px;}
+.node-tag{font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:4px;font-family:'DM Mono',monospace;white-space:nowrap;}
+.node-title{font-size:13px;font-weight:600;color:var(--t1);flex:1;}
+.node-badges{display:flex;gap:6px;align-items:center;}
+.api-pill{font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(232,121,160,.1);border:1px solid rgba(232,121,160,.2);color:var(--pink);}
+.node-caret{color:var(--t4);font-size:10px;transition:transform .2s;}
+.node.open .node-caret{transform:rotate(180deg);}
+.node-body{display:none;padding-top:10px;border-top:1px solid var(--b1);margin-top:10px;}
+.node.open .node-body{display:block;}
+.node-desc{font-size:12px;color:var(--t3);line-height:1.7;margin-bottom:8px;}
+.node-details{display:flex;flex-direction:column;gap:4px;}
+.nd-row{display:flex;align-items:flex-start;gap:8px;}
+.nd-dot{width:3px;height:3px;border-radius:50%;margin-top:7px;flex-shrink:0;}
+.nd-text{font-size:11px;color:var(--t2);line-height:1.6;}
+
+.connector{display:flex;align-items:center;gap:6px;padding:3px 0 3px 18px;}
+.conn-line-h{width:16px;height:1px;background:var(--b2);}
+.conn-arrow-r{width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:5px solid var(--b2);}
+
+/* Branch display */
+.branch{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;}
+.branch-item{background:var(--s2);border:1px solid var(--b2);border-radius:8px;padding:10px 12px;}
+.branch-label{font-size:10px;font-family:'DM Mono',monospace;margin-bottom:5px;}
+.branch-text{font-size:11px;color:var(--t2);line-height:1.55;}
+
+/* Choice pills */
+.choice-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.cpill{font-size:10px;padding:3px 10px;border-radius:16px;border:1px solid rgba(156,108,250,.2);background:rgba(156,108,250,.08);color:var(--purple);}
+.cpill.warn{border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.06);color:var(--red);}
+
+/* Tech stack */
+.tech-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:40px;}
+.tech-chip{display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:7px 13px;}
+.tc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.tc-layer{font-size:10px;color:var(--t3);margin-right:1px;}
+.tc-val{font-size:11px;color:var(--t2);}
+
+/* API summary */
+.api-sum{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;
+  background:rgba(232,121,160,.04);border:1px solid rgba(232,121,160,.1);border-radius:12px;padding:12px 24px;width:fit-content;margin:0 auto 64px;}
+.api-label{font-size:12px;color:var(--t3);}
+.api-nodes{display:flex;gap:6px;}
+.api-node{font-size:11px;padding:3px 9px;border-radius:6px;background:rgba(232,121,160,.12);border:1px solid rgba(232,121,160,.22);color:var(--pink);}
+.api-node.opt{background:rgba(232,121,160,.04);border-color:rgba(232,121,160,.08);color:var(--t4);}
+.api-note{font-size:11px;color:var(--t4);}
+
+/* ── FRAMEWORK ── */
+.prog-wrap{background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px;margin-bottom:28px;}
+.prog-track{flex:1;height:5px;background:#0e0e1e;border-radius:3px;overflow:hidden;}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));border-radius:3px;transition:width .35s ease;width:0%;}
+.prog-text{font-size:12px;color:var(--t3);white-space:nowrap;}
+.prog-text strong{color:var(--t1);}
+.prog-pct{color:var(--blue);font-weight:600;}
+
+.fw-sections{display:flex;flex-direction:column;gap:10px;margin-bottom:64px;}
+.fw-sec{background:var(--s1);border:1px solid var(--b1);border-radius:10px;overflow:hidden;}
+.fw-sec-hdr{display:flex;align-items:center;gap:10px;padding:12px 15px;cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:inherit;}
+.fw-sec-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.fw-sec-title{flex:1;font-size:13px;font-weight:600;color:#e0e0f0;letter-spacing:-.01em;}
+.fw-sec-cnt{font-size:11px;font-weight:500;margin-right:8px;}
+.fw-sec-caret{color:var(--t4);font-size:10px;transition:transform .2s;}
+.fw-sec.open .fw-sec-caret{transform:rotate(180deg);}
+.fw-items{border-top:1px solid #0e0e1e;display:none;}
+.fw-sec.open .fw-items{display:block;}
+.fw-item{display:flex;align-items:flex-start;gap:12px;padding:12px 15px;cursor:pointer;transition:background .15s;border-bottom:1px solid #0c0c18;}
+.fw-item:last-child{border-bottom:none;}
+.fw-item:hover{background:rgba(255,255,255,.015);}
+.fw-item.done{background:rgba(77,222,128,.03);}
+.fw-cb{width:15px;height:15px;border-radius:4px;flex-shrink:0;margin-top:3px;border:2px solid #252542;background:transparent;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.fw-cb-check{font-size:9px;font-weight:800;color:#000;display:none;}
+.fw-item.done .fw-cb-check{display:block;}
+.fw-content{flex:1;min-width:0;}
+.fw-top{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
+.fw-id{font-size:10px;color:#252542;font-family:'DM Mono',monospace;flex-shrink:0;}
+.fw-title{font-size:13px;font-weight:600;color:#d8d8f0;transition:color .15s;line-height:1.4;}
+.fw-item.done .fw-title{color:#2e2e4a;text-decoration:line-through;}
+.fw-desc{font-size:12px;color:#5a5a7a;line-height:1.7;transition:color .15s;}
+.fw-item.done .fw-desc{color:#1e1e38;}
+
+footer{text-align:center;color:var(--t4);font-size:11px;padding:0 0 40px;position:relative;z-index:1;font-family:'DM Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="glow-orb orb1"></div>
+<div class="glow-orb orb2"></div>
+<div class="wrap">
+
+<header>
+  <div class="badge"><div class="bdot"></div><span>Team SLE · B안 · System Document</span></div>
+  <h1>AI 사내 규정 탐색 에이전트</h1>
+  <p class="subtitle">이수현 · 손영웅 · 신태현 &nbsp;|&nbsp; 8일 스프린트</p>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('arch',this)">시스템 구조</button>
+    <button class="tab" onclick="switchTab('fw',this)">프레임워크 체크리스트</button>
+  </div>
+</header>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<div class="panel active" id="panel-arch">
+
+  <!-- Phase 1: 문서 처리 -->
+  <div class="pipe-phase">
+    <div class="phase-title">
+      <div class="phase-dot" style="background:#5c7cfa;box-shadow:0 0 8px #5c7cfa88;"></div>
+      <span class="phase-name" style="color:#5c7cfa;">문서 처리 파이프라인</span>
+      <span class="phase-sub">관리자가 문서를 업로드할 때 실행</span>
+    </div>
+    <div class="nodes">
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#5c7cfa;background:rgba(92,124,250,.12);">1-a</span>
+          <span class="node-title">파일 업로드 &amp; 파싱</span>
+          <div class="node-badges"></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">PDF, DOCX, 이미지 파일을 받아 텍스트를 추출. 카테고리 분류 용도로 첫 페이지만 먼저 추출하고, 전체 내용은 이후 단계에서 처리.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#5c7cfa;"></div><span class="nd-text">PDF → pdfplumber, DOCX → python-docx, 이미지 → Gemini Vision</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#5c7cfa;"></div><span class="nd-text">HWP 미지원 — PDF로 변환 후 업로드 안내</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#5c7cfa;"></div><span class="nd-text">첫 페이지만 추출 → 카테고리 분류 비용 절감</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#9c6cfa;background:rgba(156,108,250,.12);">1-b</span>
+          <span class="node-title">카테고리 초안 생성</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">첫 페이지 텍스트를 Gemini에게 넘겨 대카테고리 + 소카테고리 구조 초안을 JSON으로 생성. 문서 종류에 따라 동적으로 결정되므로 사내 규정 외 다른 도메인에도 활용 가능.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#9c6cfa;"></div><span class="nd-text">대카테고리 자동 제안 (예: 복리후생, 인사노무, 보안정책)</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#9c6cfa;"></div><span class="nd-text">각 대카테고리의 소카테고리까지 함께 생성</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#9c6cfa;"></div><span class="nd-text">JSON 스키마 강제로 파싱 안정성 확보</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#e879a0;background:rgba(232,121,160,.12);">1-c</span>
+          <span class="node-title">관리자 카테고리 확정</span>
+          <div class="node-badges"></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">LLM이 제안한 카테고리 초안을 관리자에게 보여주고 수정/확정. LLM 오분류를 사람이 잡아주는 단계. 확정 후 폴더 구조 자동 생성.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#e879a0;"></div><span class="nd-text">UI에서 카테고리명 수정, 소카테고리 추가/삭제 가능</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#e879a0;"></div><span class="nd-text">확정 시 storage/ 하위 폴더 구조 자동 생성</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#e879a0;"></div><span class="nd-text">categories.json에 구조 저장</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#4ade80;background:rgba(74,222,128,.1);">1-d</span>
+          <span class="node-title">문서 분류 및 저장</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">전체 문서를 읽고 각 소카테고리에 해당하는 내용을 추출해서 저장. 조항 번호·항목 번호 등 원본 구조를 그대로 보존. 한 문서가 여러 카테고리에 걸치면 내용을 분리해서 각각에 저장.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#4ade80;"></div><span class="nd-text">소카테고리별로 관련 내용 추출 → {카테고리}/{소카테고리}.txt에 저장</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#4ade80;"></div><span class="nd-text">제N조, ①② 등 원본 조항 구조 보존 (출처 표시용)</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#4ade80;"></div><span class="nd-text">문서 업데이트 시 해당 파일 덮어쓰기 (버전 관리 없음, 프로토타입)</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#4ade80;"></div><span class="nd-text">SSE로 진행 상황 프론트엔드에 실시간 전달</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Phase 2: 질문 처리 -->
+  <div class="pipe-phase">
+    <div class="phase-title">
+      <div class="phase-dot" style="background:#fbbf24;box-shadow:0 0 8px #fbbf2488;"></div>
+      <span class="phase-name" style="color:#fbbf24;">질문 처리 파이프라인</span>
+      <span class="phase-sub">사용자가 질문할 때마다 실행</span>
+    </div>
+    <div class="nodes">
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#fbbf24;background:rgba(251,191,36,.1);">2-a</span>
+          <span class="node-title">대카테고리 우선순위 분류</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">사용자 질문과 대화 기록을 바탕으로 각 대카테고리에 우선순위 점수를 매김. 점수 3(관련 없음)은 탐색에서 완전히 제외해 불필요한 LLM 호출 차단.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#fbbf24;"></div><span class="nd-text">0: 가능성 높음 → 1: 가능성 있음 → 2: 낮음 → 3: 제외</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#fbbf24;"></div><span class="nd-text">score 0, 1만 탐색 대상, 오름차순으로 순회</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#fb923c;background:rgba(251,146,60,.1);">2-b</span>
+          <span class="node-title">소카테고리 우선순위 분류</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">선택된 대카테고리 안에서 소카테고리 탐색 순서를 결정. 관련 없는 소카테고리는 건너뜀.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#fb923c;"></div><span class="nd-text">질문과 관련 높은 소카테고리부터 탐색</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#fb923c;"></div><span class="nd-text">관련 없는 소카테고리는 리스트에서 제외</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#2dd4bf;background:rgba(45,212,191,.1);">2-c</span>
+          <span class="node-title">파일 읽기 &amp; Found 판단</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">소카테고리 txt 파일을 읽어 Gemini에게 넘기고, 질문에 답할 수 있는 내용이 있는지 판단. 있으면 관련 조항 원문과 함께 found=true 반환.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#2dd4bf;"></div><span class="nd-text">found=true → 즉시 탐색 종료, 답변 생성으로 이동</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#2dd4bf;"></div><span class="nd-text">found=false → 다음 소카테고리로 이동</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#2dd4bf;"></div><span class="nd-text">탐색 경로(path_taken) 매 단계마다 기록</span></div>
+          </div>
+          <div class="branch" style="margin-top:10px;">
+            <div class="branch-item">
+              <div class="branch-label" style="color:#4ade80;">✓ FOUND</div>
+              <div class="branch-text">관련 조항 추출 → 답변 생성 단계로</div>
+            </div>
+            <div class="branch-item">
+              <div class="branch-label" style="color:#f87171;">✗ NOT FOUND</div>
+              <div class="branch-text">다음 소카테고리 → 소진 시 다음 대카테고리 → 전체 소진 시 Fallback</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#5c7cfa;background:rgba(92,124,250,.12);">2-d</span>
+          <span class="node-title">답변 생성</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">찾은 조항 내용을 바탕으로 출처를 명시하며 대화체로 답변 생성. 추가 정보를 제공하면 더 정확한 안내가 가능함을 언급.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#5c7cfa;"></div><span class="nd-text">출처 명시: 복리후생 > 휴가제도 제5조에 따르면...</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#5c7cfa;"></div><span class="nd-text">친근한 대화체, 100~200자 내외</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#5c7cfa;"></div><span class="nd-text">후속 질문 유도 멘트 포함</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#9c6cfa;background:rgba(156,108,250,.12);">2-e</span>
+          <span class="node-title">후속 질문 재탐색 판단</span>
+          <div class="node-badges"><span class="api-pill">Gemini API</span></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">사용자가 추가 정보를 제공했을 때, 기존 찾은 내용으로 답변 가능한지 판단. 필요하면 2-a부터 재탐색.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#9c6cfa;"></div><span class="nd-text">재탐색 불필요 → 기존 내용으로 더 구체적 답변</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#9c6cfa;"></div><span class="nd-text">재탐색 필요 → 2-a로 돌아가 새 우선순위 계산</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-tag" style="color:#f87171;background:rgba(248,113,113,.1);">2-f</span>
+          <span class="node-title">Fallback</span>
+          <div class="node-badges"></div>
+          <span class="node-caret">▼</span>
+        </div>
+        <div class="node-body">
+          <p class="node-desc">모든 관련 카테고리를 탐색했음에도 답변을 찾지 못한 경우. 탐색한 항목을 투명하게 공개하고 담당 부서 문의를 안내.</p>
+          <div class="node-details">
+            <div class="nd-row"><div class="nd-dot" style="background:#f87171;"></div><span class="nd-text">"현재 등록된 규정에서 관련 내용을 찾을 수 없었습니다."</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#f87171;"></div><span class="nd-text">탐색한 카테고리 > 소카테고리 목록 나열</span></div>
+            <div class="nd-row"><div class="nd-dot" style="background:#f87171;"></div><span class="nd-text">담당 부서 문의 안내</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Tech Stack -->
+  <div class="section-label">Tech Stack</div>
+  <div class="tech-row">
+    <div class="tech-chip"><div class="tc-dot" style="background:#5c7cfa;box-shadow:0 0 6px #5c7cfa88;"></div><span class="tc-layer">Frontend</span><span class="tc-val">HTML / CSS / JS</span></div>
+    <div class="tech-chip"><div class="tc-dot" style="background:#9c6cfa;box-shadow:0 0 6px #9c6cfa88;"></div><span class="tc-layer">Backend</span><span class="tc-val">Python · FastAPI</span></div>
+    <div class="tech-chip"><div class="tc-dot" style="background:#e879a0;box-shadow:0 0 6px #e879a088;"></div><span class="tc-layer">LLM</span><span class="tc-val">Gemini API (gemini-2.0-flash)</span></div>
+    <div class="tech-chip"><div class="tc-dot" style="background:#4ade80;box-shadow:0 0 6px #4ade8088;"></div><span class="tc-layer">파싱</span><span class="tc-val">pdfplumber · python-docx · Pillow</span></div>
+    <div class="tech-chip"><div class="tc-dot" style="background:#fbbf24;box-shadow:0 0 6px #fbbf2488;"></div><span class="tc-layer">저장</span><span class="tc-val">로컬 파일 시스템 (txt + JSON)</span></div>
+    <div class="tech-chip"><div class="tc-dot" style="background:#fb923c;box-shadow:0 0 6px #fb923c88;"></div><span class="tc-layer">배포</span><span class="tc-val">GCP Compute Engine · nginx</span></div>
+  </div>
+
+  <!-- API Call Summary -->
+  <div class="api-sum">
+    <span class="api-label">Gemini API 호출 시점</span>
+    <div class="api-nodes">
+      <span class="api-node">1-b</span>
+      <span class="api-node">1-d</span>
+      <span class="api-node">2-a</span>
+      <span class="api-node">2-b</span>
+      <span class="api-node">2-c</span>
+      <span class="api-node">2-d</span>
+      <span class="api-node">2-e</span>
+      <span class="api-node opt">1-a 이미지*</span>
+    </div>
+    <span class="api-note">* 이미지 파일 업로드 시만</span>
+  </div>
+
+</div><!-- /panel-arch -->
+
+
+<!-- ═══════════ FRAMEWORK ═══════════ -->
+<div class="panel" id="panel-fw">
+  <div class="prog-wrap">
+    <div class="prog-track"><div class="prog-fill" id="pfill"></div></div>
+    <div class="prog-text"><strong id="pdone">0</strong> / <span id="ptotal">0</span> &nbsp;<span class="prog-pct" id="ppct">0%</span></div>
+  </div>
+  <div class="fw-sections" id="fw-secs"></div>
+</div>
+
+</div><!-- /wrap -->
+<footer><div class="wrap">SLE Team · B안 · AI 사내 규정 탐색 에이전트</div></footer>
+
+<script>
+function switchTab(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+function toggleNode(el) {
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.node').forEach(n => { n.classList.remove('open'); n.querySelector('.node-body').style.display = 'none'; });
+  if (!isOpen) { el.classList.add('open'); el.querySelector('.node-body').style.display = 'block'; }
+}
+document.querySelectorAll('.node-body').forEach(b => b.style.display = 'none');
+
+// ── Framework Data ──
+const fwData = [
+  { id:'arch', title:'아키텍처 결정', color:'#5c7cfa', items:[
+    { id:'A-1', title:'FastAPI 백엔드 세팅', desc:'uvicorn + FastAPI로 서버 구성. CORS 설정, 라우터 분리(upload/categories/process/query), 정적 파일 서빙 포함.' },
+    { id:'A-2', title:'파일 저장 구조 확정', desc:'storage/ 하위에 categories.json + 대카테고리/소카테고리.txt 형태로 저장. 폴더 생성은 Python os.makedirs()로 자동 처리.' },
+    { id:'A-3', title:'Gemini API 키 환경변수 관리', desc:'.env 파일에 GEMINI_API_KEY 보관. python-dotenv로 로드. .gitignore에 반드시 포함. 클라이언트에 절대 노출 금지.' },
+  ]},
+  { id:'doc', title:'문서 처리 파이프라인', color:'#9c6cfa', items:[
+    { id:'D-1', title:'PDF 파싱 (pdfplumber)', desc:'페이지별 텍스트 추출. 스캔본(이미지 PDF)은 텍스트 추출 불가 → Gemini Vision fallback 처리.' },
+    { id:'D-2', title:'DOCX 파싱 (python-docx)', desc:'본문 단락 + 테이블 셀 텍스트 모두 추출. 표 형태 규정 문서 대응.' },
+    { id:'D-3', title:'이미지 파싱 (Gemini Vision)', desc:'Pillow로 이미지 로드 후 Gemini 멀티모달 호출. OCR 별도 설치 불필요.' },
+    { id:'D-4', title:'첫 페이지 추출 분리', desc:'카테고리 분류 시 전체 문서를 읽지 않고 첫 페이지/목차만 추출. LLM 토큰 비용 절감.' },
+    { id:'D-5', title:'카테고리 초안 생성 프롬프트', desc:'JSON 스키마 명시, "다른 텍스트 포함 금지" 강제. 파싱 실패 시 1회 재시도 로직 포함.' },
+    { id:'D-6', title:'관리자 카테고리 확정 UI', desc:'카테고리 초안을 모달로 표시. 이름 수정, 소카테고리 추가/삭제 가능. 확정 후 폴더 구조 자동 생성.' },
+    { id:'D-7', title:'문서 내용 분류 및 저장', desc:'소카테고리별로 관련 내용 추출 → 조항 구조 보존 → txt append 저장. SSE로 진행률 프론트에 전달.' },
+    { id:'D-8', title:'문서 업데이트 처리', desc:'같은 카테고리에 새 문서 업로드 시 기존 파일 덮어쓰기. 버전 관리 없음 (프로토타입).' },
+  ]},
+  { id:'query', title:'질문 처리 파이프라인', color:'#fbbf24', items:[
+    { id:'Q-1', title:'대카테고리 우선순위 프롬프트', desc:'질문 + 대화 기록 + 카테고리 목록 → 0/1/2/3 점수 JSON 반환. score 3은 탐색 제외, 0→1 순으로 탐색.' },
+    { id:'Q-2', title:'소카테고리 우선순위 프롬프트', desc:'선택된 대카테고리 안에서 탐색 순서 결정. 관련 없는 소카테고리 제외.' },
+    { id:'Q-3', title:'Found 판단 프롬프트', desc:'소카테고리 txt 내용 + 질문 → found true/false + 관련 조항 원문 JSON 반환. 빈 파일은 바로 false 처리.' },
+    { id:'Q-4', title:'탐색 경로 기록 (path_taken)', desc:'매 소카테고리 탐색마다 {category, sub, found} 기록. 최종 응답에 포함해 UI에서 시각화.' },
+    { id:'Q-5', title:'답변 생성 프롬프트', desc:'출처 + 조항 원문 + 대화 기록 → 친근한 대화체 답변. 출처 명시 필수. 후속 질문 유도 포함.' },
+    { id:'Q-6', title:'후속 질문 재탐색 판단', desc:'이전 답변 + 새 메시지 → 재탐색 필요 여부 JSON 판단. 불필요 시 기존 내용으로 바로 답변.' },
+    { id:'Q-7', title:'Fallback 응답', desc:'모든 카테고리 소진 시 "찾을 수 없음" + 탐색한 항목 목록 + 담당 부서 문의 안내.' },
+    { id:'Q-8', title:'대화 히스토리 관리', desc:'프론트에서 conversation_history 배열 유지. 매 요청 시 함께 전송. 서버는 무상태(stateless).' },
+  ]},
+  { id:'fe', title:'프론트엔드', color:'#2dd4bf', items:[
+    { id:'F-1', title:'파일 업로드 UI', desc:'드래그&드롭 + 파일 선택 버튼. 업로드 완료 후 자동으로 /analyze 호출해 카테고리 초안 요청.' },
+    { id:'F-2', title:'카테고리 확정 모달', desc:'초안 표시 + 수정 가능한 인터페이스. 확정 버튼 클릭 시 /categories/confirm → /process 순서로 호출.' },
+    { id:'F-3', title:'문서 처리 진행 상태 표시', desc:'SSE로 수신한 진행률을 프로그레스 바로 표시. 현재 처리 중인 파일명과 % 표시.' },
+    { id:'F-4', title:'채팅 인터페이스', desc:'질문 입력창 + 메시지 목록. conversation_history 배열 프론트에서 관리. 엔터/버튼으로 전송.' },
+    { id:'F-5', title:'탐색 경로 시각화', desc:'path_taken 배열 받아서 "✗ 복리후생 > 보상제도", "✓ 복리후생 > 휴가제도" 형태로 표시.' },
+    { id:'F-6', title:'답변 + 출처 표시', desc:'source 필드를 답변 위에 태그 형태로 표시. relevant_sections는 펼치기 버튼으로 원문 확인 가능.' },
+    { id:'F-7', title:'사이드바 카테고리 구조 표시', desc:'/categories로 현재 카테고리 구조 불러와 트리 형태로 표시.' },
+  ]},
+  { id:'err', title:'에러 처리', color:'#f87171', items:[
+    { id:'E-1', title:'Gemini API 실패 재시도', desc:'호출 실패 시 1회 재시도. JSON 파싱 실패도 동일. 2회 연속 실패 시 사용자에게 안내 메시지.' },
+    { id:'E-2', title:'파일 파싱 실패 처리', desc:'파싱 오류 시 해당 파일 건너뛰고 나머지 처리 계속. 실패한 파일명 목록 응답에 포함.' },
+    { id:'E-3', title:'빈 카테고리 파일 처리', desc:'txt 파일이 비어있으면 Gemini 호출 없이 바로 found=false 처리. 불필요한 API 호출 방지.' },
+    { id:'E-4', title:'처리 타임아웃', desc:'문서가 많을 경우 처리 시간이 길어질 수 있음. FastAPI 비동기 처리로 서버 블로킹 방지. 클라이언트 타임아웃 기준 설정.' },
+  ]},
+  { id:'dep', title:'배포', color:'#4ade80', items:[
+    { id:'Dp-1', title:'GCP Compute Engine 세팅', desc:'Python 환경 설치, git clone, pip install. .env 파일 수동 생성. uvicorn으로 서버 실행.' },
+    { id:'Dp-2', title:'nginx 리버스 프록시', desc:'80/443 포트 → uvicorn 8000 포트 프록시. HTTPS는 Let\'s Encrypt로 설정.' },
+    { id:'Dp-3', title:'프로세스 유지', desc:'screen 또는 systemd로 uvicorn 프로세스 상시 실행 유지. 서버 재시작 시 자동 복구.' },
+    { id:'Dp-4', title:'Gemini API 비용 관리', desc:'1회 요청당 문서 텍스트 8000자 제한. 소카테고리 탐색 횟수에 비례해 비용 발생. 데모용 문서 수 제한 권장.' },
+  ]},
+];
+
+const checked = {};
+const cont = document.getElementById('fw-secs');
+let total = 0;
+fwData.forEach(sec => { total += sec.items.length; });
+document.getElementById('ptotal').textContent = total;
+
+fwData.forEach(sec => {
+  const el = document.createElement('div');
+  el.className = 'fw-sec open';
+  el.innerHTML = `
+    <button class="fw-sec-hdr" onclick="toggleSec(this)">
+      <div class="fw-sec-dot" style="background:${sec.color};box-shadow:0 0 7px ${sec.color}55;"></div>
+      <span class="fw-sec-title">${sec.title}</span>
+      <span class="fw-sec-cnt" id="cnt-${sec.id}" style="color:${sec.color};">0/${sec.items.length}</span>
+      <span class="fw-sec-caret">▼</span>
+    </button>
+    <div class="fw-items">
+      ${sec.items.map(item => `
+        <div class="fw-item" id="fi-${item.id}" onclick="toggleItem('${item.id}','${sec.id}',${sec.items.length},'${sec.color}')">
+          <div class="fw-cb" id="cb-${item.id}"><span class="fw-cb-check">✓</span></div>
+          <div class="fw-content">
+            <div class="fw-top"><span class="fw-id">${item.id}</span><span class="fw-title">${item.title}</span></div>
+            <p class="fw-desc">${item.desc}</p>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  cont.appendChild(el);
+});
+updateProg();
+
+function toggleSec(btn) { btn.closest('.fw-sec').classList.toggle('open'); }
+
+function toggleItem(id, secId, secTotal, color) {
+  checked[id] = !checked[id];
+  const item = document.getElementById('fi-' + id);
+  const cb = document.getElementById('cb-' + id);
+  if (checked[id]) {
+    item.classList.add('done');
+    cb.style.borderColor = color; cb.style.background = color;
+  } else {
+    item.classList.remove('done');
+    cb.style.borderColor = '#252542'; cb.style.background = 'transparent';
+  }
+  const sec = fwData.find(s => s.id === secId);
+  const done = sec.items.filter(i => checked[i.id]).length;
+  const cnt = document.getElementById('cnt-' + secId);
+  cnt.textContent = `${done}/${secTotal}`;
+  cnt.style.color = done === secTotal ? color : '#2a2a52';
+  updateProg();
+}
+
+function updateProg() {
+  const done = Object.values(checked).filter(Boolean).length;
+  const pct = Math.round(done / total * 100);
+  document.getElementById('pfill').style.width = pct + '%';
+  document.getElementById('pdone').textContent = done;
+  document.getElementById('ppct').textContent = pct + '%';
+}
+</script>
+</body>
+</html>

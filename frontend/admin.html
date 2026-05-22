@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLE Agent — 관리자</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-page">
+
+    <!-- 헤더 -->
+    <header class="admin-header">
+        <div class="admin-header-left">
+            <div class="logo">
+                <i class="fa-solid fa-brain-circuit neon-glow"></i>
+                <span>SLE Agent</span>
+            </div>
+            <span class="header-sep">|</span>
+            <span id="header-username" class="header-username"></span>
+        </div>
+        <div class="admin-header-right">
+            <div class="admin-code-display">
+                <span class="code-label">접속 코드</span>
+                <span id="header-admin-code" class="code-badge">-------</span>
+                <button id="btn-copy-code" class="btn btn-icon" title="코드 복사">
+                    <i class="fa-regular fa-copy"></i>
+                </button>
+            </div>
+            <button id="btn-logout" class="btn btn-outline btn-sm">
+                <i class="fa-solid fa-right-from-bracket"></i> 로그아웃
+            </button>
+        </div>
+    </header>
+
+    <!-- 메인 레이아웃 -->
+    <div class="admin-layout">
+
+        <!-- 사이드 네비게이션 -->
+        <nav class="admin-nav">
+            <button class="nav-item active" data-panel="docs">
+                <i class="fa-solid fa-file-arrow-up"></i>
+                <span>문서 관리</span>
+            </button>
+            <button class="nav-item" data-panel="files">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>파일 매니저</span>
+            </button>
+            <button class="nav-item" data-panel="users">
+                <i class="fa-solid fa-users"></i>
+                <span>사용자 관리</span>
+            </button>
+        </nav>
+
+        <!-- 콘텐츠 영역 -->
+        <main class="admin-content">
+
+            <!-- 문서 관리 패널 -->
+            <section id="panel-docs" class="admin-panel">
+                <h2 class="panel-title"><i class="fa-solid fa-file-arrow-up"></i> 문서 관리</h2>
+
+                <div class="card">
+                    <h3 class="card-title">파일 업로드</h3>
+                    <div id="drop-zone" class="drop-zone">
+                        <i class="fa-solid fa-cloud-arrow-up cloud-icon"></i>
+                        <p>PDF, DOCX, PNG, JPG 파일을 끌어오거나 클릭하세요</p>
+                        <input type="file" id="file-input" multiple accept=".pdf,.docx,.png,.jpg,.jpeg" style="display:none;">
+                    </div>
+                    <div id="file-list" class="file-list"></div>
+                    <button id="btn-analyze" class="btn btn-primary" disabled>
+                        <i class="fa-solid fa-magnifying-glass-chart"></i> 카테고리 초안 분석
+                    </button>
+                </div>
+
+                <!-- 진행 상황 -->
+                <div id="progress-container" class="card hidden">
+                    <div class="progress-title">
+                        <span>문서 분류 및 가공 중...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="progress-bar-fill" class="progress-bar-fill" style="width:0%"></div>
+                    </div>
+                    <div id="progress-file" class="progress-file">준비 중...</div>
+                </div>
+
+                <!-- 카테고리 구조 -->
+                <div class="card">
+                    <div class="card-title-row">
+                        <h3 class="card-title"><i class="fa-solid fa-folder-tree"></i> 카테고리 구조</h3>
+                        <button id="btn-confirm-trigger" class="btn btn-outline btn-sm hidden">
+                            <i class="fa-solid fa-check-double"></i> 구조 확정
+                        </button>
+                    </div>
+                    <div id="category-tree" class="category-tree">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-diagram-predecessor"></i>
+                            <p>문서를 업로드하고 분석하면 카테고리 구조가 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 파일 매니저 패널 -->
+            <section id="panel-files" class="admin-panel hidden">
+                <h2 class="panel-title"><i class="fa-solid fa-folder-open"></i> 파일 매니저</h2>
+                <div class="file-manager">
+                    <!-- 트리 사이드바 -->
+                    <div class="fm-sidebar">
+                        <div class="fm-sidebar-header">
+                            <span>폴더 구조</span>
+                            <div class="fm-actions">
+                                <button id="btn-new-folder" class="btn btn-icon" title="새 폴더">
+                                    <i class="fa-solid fa-folder-plus"></i>
+                                </button>
+                                <button id="btn-new-file" class="btn btn-icon" title="새 파일">
+                                    <i class="fa-solid fa-file-circle-plus"></i>
+                                </button>
+                                <button id="btn-refresh-tree" class="btn btn-icon" title="새로고침">
+                                    <i class="fa-solid fa-rotate-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="file-tree" class="file-tree">
+                            <div class="empty-state"><p>파일이 없습니다</p></div>
+                        </div>
+                    </div>
+
+                    <!-- 에디터 영역 -->
+                    <div class="fm-editor">
+                        <div id="fm-placeholder" class="fm-placeholder">
+                            <i class="fa-solid fa-file-lines"></i>
+                            <p>좌측에서 파일을 선택하세요</p>
+                        </div>
+                        <div id="fm-edit-area" class="hidden">
+                            <div class="fm-editor-header">
+                                <span id="fm-current-path" class="fm-path"></span>
+                                <div class="fm-editor-actions">
+                                    <button id="btn-move-file" class="btn btn-outline btn-sm">
+                                        <i class="fa-solid fa-arrows-up-down-left-right"></i> 이동
+                                    </button>
+                                    <button id="btn-delete-file" class="btn btn-danger btn-sm">
+                                        <i class="fa-solid fa-trash"></i> 삭제
+                                    </button>
+                                    <button id="btn-save-file" class="btn btn-primary btn-sm">
+                                        <i class="fa-solid fa-floppy-disk"></i> 저장
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea id="fm-textarea" class="fm-textarea" spellcheck="false"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 사용자 관리 패널 -->
+            <section id="panel-users" class="admin-panel hidden">
+                <h2 class="panel-title"><i class="fa-solid fa-users"></i> 사용자 관리</h2>
+                <div class="card">
+                    <div class="card-title-row">
+                        <h3 class="card-title">연결된 사용자</h3>
+                        <button id="btn-refresh-users" class="btn btn-outline btn-sm">
+                            <i class="fa-solid fa-rotate-right"></i> 새로고침
+                        </button>
+                    </div>
+                    <div id="users-table-wrap">
+                        <div class="empty-state"><p>연결된 사용자가 없습니다</p></div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- 카테고리 편집 모달 -->
+    <div id="category-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-pen-to-square"></i> 카테고리 초안 편집</h2>
+                <button id="modal-close" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">AI가 분석한 카테고리 구조입니다. 소카테고리는 쉼표로 구분해 수정할 수 있습니다.</p>
+                <div id="modal-categories-list" class="modal-categories-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-modal-cancel" class="btn btn-outline">취소</button>
+                <button id="btn-modal-confirm" class="btn btn-primary">확정 및 문서 분류 시작</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 파일 이동 모달 -->
+    <div id="move-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-arrows-up-down-left-right"></i> 파일 이동</h2>
+                <button id="move-modal-close" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>이동할 폴더 선택</label>
+                    <select id="move-folder-select" class="form-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>또는 새 폴더명 직접 입력</label>
+                    <input type="text" id="move-new-folder" placeholder="새 폴더명 (선택 사항)">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-move-cancel" class="btn btn-outline">취소</button>
+                <button id="btn-move-confirm" class="btn btn-primary">이동</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+    // ── 인증 ──────────────────────────────────────────────
+    requireRole('admin');
+    document.getElementById('header-username').textContent = localStorage.getItem('username') || '';
+    document.getElementById('btn-logout').addEventListener('click', logout);
+
+    // admin_code 표시
+    authFetch('/auth/me').then(r => r.json()).then(data => {
+        if (data.admin_code) {
+            document.getElementById('header-admin-code').textContent = data.admin_code;
+        }
+    });
+
+    document.getElementById('btn-copy-code').addEventListener('click', () => {
+        const code = document.getElementById('header-admin-code').textContent;
+        navigator.clipboard.writeText(code);
+        showToast('코드가 복사되었습니다');
+    });
+
+    // ── 네비게이션 ─────────────────────────────────────────
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.admin-panel').forEach(p => p.classList.add('hidden'));
+            btn.classList.add('active');
+            document.getElementById('panel-' + btn.dataset.panel).classList.remove('hidden');
+            if (btn.dataset.panel === 'files') loadFileTree();
+            if (btn.dataset.panel === 'users') loadUsers();
+        });
+    });
+
+    // ── 문서 관리 ──────────────────────────────────────────
+    let uploadedFiles = [];
+    let serverFiles = [];   // already uploaded on server
+    let categoryDraft = [];
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileList = document.getElementById('file-list');
+    const btnAnalyze = document.getElementById('btn-analyze');
+
+    async function loadServerFiles() {
+        try {
+            const res = await authFetch('/api/upload/list');
+            const data = await res.json();
+            serverFiles = data.files || [];
+            renderFileList();
+        } catch (e) { serverFiles = []; }
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    ['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('dragover'); }));
+    dropZone.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
+    fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
+
+    function handleFiles(files) {
+        const allowed = ['pdf','docx','jpg','jpeg','png'];
+        files.forEach(f => {
+            const ext = f.name.split('.').pop().toLowerCase();
+            if (!allowed.includes(ext)) return;
+            if (uploadedFiles.find(u => u.name === f.name)) return;
+            if (serverFiles.includes(f.name)) {
+                if (!confirm(`"${f.name}" 은(는) 이미 서버에 업로드된 파일입니다.\n새로운 파일로 다시 가공을 진행하시겠습니까?`)) return;
+            }
+            uploadedFiles.push(f);
+        });
+        renderFileList();
+        btnAnalyze.disabled = uploadedFiles.length === 0;
+    }
+
+    function renderFileList() {
+        const pendingHtml = uploadedFiles.map((f, i) => `
+            <div class="file-item">
+                <i class="fa-solid fa-file"></i>
+                <span>${f.name}</span>
+                <button onclick="removeFile(${i})" class="btn btn-icon btn-sm"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        `).join('');
+
+        const serverHtml = serverFiles.length ? `
+            <div class="server-files-section">
+                <div class="server-files-label"><i class="fa-solid fa-cloud-arrow-up"></i> 서버에 저장된 파일</div>
+                ${serverFiles.map(name => `
+                    <div class="file-item file-item-server">
+                        <i class="fa-solid fa-file-check"></i>
+                        <span>${name}</span>
+                    </div>
+                `).join('')}
+            </div>
+        ` : '';
+
+        fileList.innerHTML = pendingHtml + serverHtml;
+    }
+
+    function removeFile(i) {
+        uploadedFiles.splice(i, 1);
+        renderFileList();
+        btnAnalyze.disabled = uploadedFiles.length === 0;
+    }
+
+    btnAnalyze.addEventListener('click', async () => {
+        btnAnalyze.disabled = true;
+        btnAnalyze.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 업로드 중...';
+        try {
+            const form = new FormData();
+            uploadedFiles.forEach(f => form.append('files', f));
+            const up = await authFetch('/api/upload', { method: 'POST', body: form });
+            if (!up.ok) throw new Error('업로드 실패');
+
+            btnAnalyze.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 분석 중...';
+            const res = await authFetch('/api/analyze', { method: 'POST' });
+            const data = await res.json();
+            categoryDraft = data.tree || [];
+            renderCategoryTree(categoryDraft);
+            document.getElementById('btn-confirm-trigger').classList.remove('hidden');
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            btnAnalyze.disabled = false;
+            btnAnalyze.innerHTML = '<i class="fa-solid fa-magnifying-glass-chart"></i> 카테고리 초안 분석';
+        }
+    });
+
+    function renderCategoryTree(tree) {
+        const el = document.getElementById('category-tree');
+        if (!tree || !tree.length) {
+            el.innerHTML = '<div class="empty-state"><i class="fa-solid fa-diagram-predecessor"></i><p>카테고리가 없습니다</p></div>';
+            return;
+        }
+        el.innerHTML = renderTreePreview(tree, 0);
+    }
+
+    function renderTreePreview(nodes, depth) {
+        return nodes.map(node => {
+            const children = node.children || [];
+            if (children.length) {
+                return `<div class="cat-item" style="margin-left:${depth * 14}px">
+                    <div class="cat-name"><i class="fa-solid fa-folder"></i> ${node.name}</div>
+                    <div>${renderTreePreview(children, depth + 1)}</div>
+                </div>`;
+            } else {
+                return `<div class="cat-leaf" style="margin-left:${depth * 14}px">
+                    <span class="sub-tag"><i class="fa-solid fa-file-lines"></i> ${node.name}</span>
+                </div>`;
+            }
+        }).join('');
+    }
+
+    // 카테고리 확정 모달
+    let modalNodeMap = {};
+
+    document.getElementById('btn-confirm-trigger').addEventListener('click', () => {
+        modalNodeMap = {};
+        let counter = 0;
+        const list = document.getElementById('modal-categories-list');
+        list.innerHTML = renderModalTree(categoryDraft, 0, () => counter++);
+        document.getElementById('category-modal').classList.remove('hidden');
+    });
+
+    function renderModalTree(nodes, depth, nextIdx) {
+        return nodes.map(node => {
+            const idx = nextIdx();
+            modalNodeMap[idx] = node;
+            const children = node.children || [];
+            const icon = children.length ? 'fa-folder' : 'fa-file-lines';
+            return `<div class="modal-tree-item">
+                <div class="modal-tree-row" style="padding-left:${depth * 18}px">
+                    <i class="fa-solid ${icon}"></i>
+                    <input type="text" class="modal-tree-name" data-idx="${idx}" value="${node.name}">
+                </div>
+                ${children.length ? renderModalTree(children, depth + 1, nextIdx) : ''}
+            </div>`;
+        }).join('');
+    }
+
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+    document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
+    function closeModal() { document.getElementById('category-modal').classList.add('hidden'); }
+
+    document.getElementById('btn-modal-confirm').addEventListener('click', async () => {
+        document.querySelectorAll('.modal-tree-name').forEach(input => {
+            const idx = parseInt(input.dataset.idx);
+            if (modalNodeMap[idx]) modalNodeMap[idx].name = input.value.trim() || modalNodeMap[idx].name;
+        });
+        closeModal();
+        renderCategoryTree(categoryDraft);
+
+        try {
+            await authFetch('/api/categories/confirm', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ tree: categoryDraft })
+            });
+            startProcessing();
+        } catch (err) {
+            showToast('카테고리 확정 실패: ' + err.message, 'error');
+        }
+    });
+
+    function startProcessing() {
+        const prog = document.getElementById('progress-container');
+        const fill = document.getElementById('progress-bar-fill');
+        const percent = document.getElementById('progress-percent');
+        const file = document.getElementById('progress-file');
+        prog.classList.remove('hidden');
+
+        const token = localStorage.getItem('token');
+        const es = new EventSource(`/api/process?token=${token}`);
+
+        es.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            fill.style.width = d.progress + '%';
+            percent.textContent = d.progress + '%';
+            if (d.status === 'processing') file.textContent = '처리 중: ' + d.file;
+            if (d.status === 'done') {
+                file.textContent = '완료!';
+                es.close();
+                showToast('문서 처리가 완료되었습니다');
+                loadFileTree();
+                loadServerFiles();
+            }
+        };
+        es.onerror = () => { es.close(); showToast('처리 중 오류 발생', 'error'); };
+    }
+
+    // 시작 시 서버 파일 목록 및 카테고리 로드
+    loadServerFiles();
+    authFetch('/api/categories').then(r => r.json()).then(d => {
+        if (d.tree && d.tree.length) {
+            categoryDraft = d.tree;
+            renderCategoryTree(d.tree);
+            document.getElementById('btn-confirm-trigger').classList.remove('hidden');
+        }
+    });
+
+    // ── 파일 매니저 ────────────────────────────────────────
+    let currentFilePath = null;
+    let currentFolderPath = '';
+
+    async function loadFileTree() {
+        const res = await authFetch('/api/files/tree');
+        const data = await res.json();
+        const treeEl = document.getElementById('file-tree');
+        if (!data.tree || !data.tree.length) {
+            treeEl.innerHTML = '<div class="empty-state"><p>파일이 없습니다</p></div>';
+            return;
+        }
+        treeEl.innerHTML = renderTree(data.tree);
+        treeEl.querySelectorAll('.tree-file').forEach(el => {
+            el.addEventListener('click', () => openFile(el.dataset.path));
+        });
+        treeEl.querySelectorAll('.tree-folder-label').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (!e.target.closest('.tree-delete-folder')) {
+                    el.closest('.tree-folder').classList.toggle('open');
+                    const folderPath = el.querySelector('.tree-delete-folder')?.dataset.path || '';
+                    currentFolderPath = folderPath;
+                    document.querySelectorAll('.tree-folder-label').forEach(l => l.classList.remove('active'));
+                    el.classList.add('active');
+                }
+            });
+        });
+        treeEl.querySelectorAll('.tree-delete-folder').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const path = btn.dataset.path;
+                if (!confirm(`"${path}" 폴더와 내부 파일을 모두 삭제하시겠습니까?`)) return;
+                const res = await authFetch('/api/files/item?path=' + encodeURIComponent(path), { method: 'DELETE' });
+                if (res.ok) {
+                    if (currentFilePath && currentFilePath.startsWith(path + '/')) {
+                        currentFilePath = null;
+                        document.getElementById('fm-placeholder').classList.remove('hidden');
+                        document.getElementById('fm-edit-area').classList.add('hidden');
+                    }
+                    loadFileTree();
+                    showToast('폴더가 삭제되었습니다');
+                } else showToast('폴더 삭제 실패', 'error');
+            });
+        });
+    }
+
+    function renderTree(items) {
+        return items.map(item => {
+            if (item.type === 'folder') {
+                return `<div class="tree-folder open">
+                    <div class="tree-folder-label">
+                        <span class="folder-label-text"><i class="fa-solid fa-folder"></i> ${item.name}</span>
+                        <button class="btn btn-icon tree-delete-folder" data-path="${item.path}" title="폴더 삭제" style="padding:2px 5px;font-size:0.7rem;opacity:0.5;">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="tree-folder-children">${renderTree(item.children || [])}</div>
+                </div>`;
+            } else {
+                return `<div class="tree-file" data-path="${item.path}">
+                    <i class="fa-solid fa-file-lines"></i> ${item.name}
+                </div>`;
+            }
+        }).join('');
+    }
+
+    async function openFile(path) {
+        const res = await authFetch('/api/files/content?path=' + encodeURIComponent(path));
+        const data = await res.json();
+        currentFilePath = path;
+        currentFolderPath = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+        document.getElementById('fm-placeholder').classList.add('hidden');
+        document.getElementById('fm-edit-area').classList.remove('hidden');
+        document.getElementById('fm-current-path').textContent = path;
+        document.getElementById('fm-textarea').value = data.content;
+
+        document.querySelectorAll('.tree-file').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tree-folder-label').forEach(l => l.classList.remove('active'));
+        document.querySelector(`.tree-file[data-path="${path}"]`)?.classList.add('active');
+        if (currentFolderPath) {
+            document.querySelector(`.tree-delete-folder[data-path="${currentFolderPath}"]`)
+                ?.closest('.tree-folder-label')?.classList.add('active');
+        }
+    }
+
+    document.getElementById('btn-save-file').addEventListener('click', async () => {
+        if (!currentFilePath) return;
+        const content = document.getElementById('fm-textarea').value;
+        const res = await authFetch('/api/files/content', {
+            method: 'PUT',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ path: currentFilePath, content })
+        });
+        if (res.ok) showToast('저장되었습니다');
+        else showToast('저장 실패', 'error');
+    });
+
+    document.getElementById('btn-delete-file').addEventListener('click', async () => {
+        if (!currentFilePath || !confirm(`"${currentFilePath}" 파일을 삭제하시겠습니까?`)) return;
+        const res = await authFetch('/api/files/item?path=' + encodeURIComponent(currentFilePath), { method: 'DELETE' });
+        if (res.ok) {
+            currentFilePath = null;
+            document.getElementById('fm-placeholder').classList.remove('hidden');
+            document.getElementById('fm-edit-area').classList.add('hidden');
+            loadFileTree();
+            showToast('삭제되었습니다');
+        } else showToast('삭제 실패', 'error');
+    });
+
+    document.getElementById('btn-refresh-tree').addEventListener('click', loadFileTree);
+
+    document.getElementById('btn-new-folder').addEventListener('click', async () => {
+        const name = prompt('새 폴더명을 입력하세요:');
+        if (!name) return;
+        await authFetch('/api/files/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ path: name }) });
+        loadFileTree();
+    });
+
+    document.getElementById('btn-new-file').addEventListener('click', async () => {
+        const hint = currentFolderPath ? `현재 폴더: ${currentFolderPath}` : '폴더를 먼저 선택하면 해당 폴더에 생성됩니다';
+        const name = prompt(`파일명을 입력하세요 (.txt 생략 가능)\n${hint}`);
+        if (!name) return;
+        const filename = name.endsWith('.txt') ? name : name + '.txt';
+        const fullPath = currentFolderPath ? currentFolderPath + '/' + filename : filename;
+        await authFetch('/api/files/file', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ path: fullPath, content: '' }) });
+        await loadFileTree();
+        openFile(fullPath);
+    });
+
+    // 파일 이동 모달
+    document.getElementById('btn-move-file').addEventListener('click', async () => {
+        if (!currentFilePath) return;
+        const res = await authFetch('/api/files/tree');
+        const data = await res.json();
+        const folders = [];
+        function collectFolders(items) { items.forEach(i => { if (i.type === 'folder') { folders.push(i.path); collectFolders(i.children || []); } }); }
+        collectFolders(data.tree);
+        const sel = document.getElementById('move-folder-select');
+        sel.innerHTML = folders.map(f => `<option value="${f}">${f}</option>`).join('');
+        document.getElementById('move-new-folder').value = '';
+        document.getElementById('move-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('move-modal-close').addEventListener('click', () => document.getElementById('move-modal').classList.add('hidden'));
+    document.getElementById('btn-move-cancel').addEventListener('click', () => document.getElementById('move-modal').classList.add('hidden'));
+
+    document.getElementById('btn-move-confirm').addEventListener('click', async () => {
+        const newFolder = document.getElementById('move-new-folder').value.trim() || document.getElementById('move-folder-select').value;
+        if (!newFolder || !currentFilePath) return;
+        const filename = currentFilePath.split('/').pop();
+        const dst = newFolder + '/' + filename;
+        const res = await authFetch('/api/files/move', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ src: currentFilePath, dst })
+        });
+        document.getElementById('move-modal').classList.add('hidden');
+        if (res.ok) {
+            currentFilePath = dst;
+            document.getElementById('fm-current-path').textContent = dst;
+            loadFileTree();
+            showToast('이동 완료');
+        } else showToast('이동 실패', 'error');
+    });
+
+    // ── 사용자 관리 ────────────────────────────────────────
+    async function loadUsers() {
+        const res = await authFetch('/api/users/linked');
+        const data = await res.json();
+        const wrap = document.getElementById('users-table-wrap');
+        if (!data.users || !data.users.length) {
+            wrap.innerHTML = '<div class="empty-state"><p>연결된 사용자가 없습니다</p></div>';
+            return;
+        }
+        wrap.innerHTML = `
+            <table class="users-table">
+                <thead><tr><th>아이디</th><th>가입일</th><th>상태</th><th>관리</th></tr></thead>
+                <tbody>
+                    ${data.users.map(u => `
+                        <tr>
+                            <td>${u.username}</td>
+                            <td>${u.created_at ? u.created_at.slice(0,10) : '-'}</td>
+                            <td><span class="status-badge ${u.is_blocked ? 'blocked' : 'active'}">${u.is_blocked ? '차단됨' : '활성'}</span></td>
+                            <td>
+                                <button onclick="toggleBlock(${u.id}, ${u.is_blocked})"
+                                    class="btn btn-sm ${u.is_blocked ? 'btn-primary' : 'btn-danger'}">
+                                    ${u.is_blocked ? '차단 해제' : '차단'}
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async function toggleBlock(userId, currentlyBlocked) {
+        await authFetch('/api/users/block', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ user_id: userId, blocked: !currentlyBlocked })
+        });
+        loadUsers();
+    }
+
+    document.getElementById('btn-refresh-users').addEventListener('click', loadUsers);
+
+    // EventSource는 Authorization 헤더를 지원하지 않아 query param으로 토큰 전달
+    // process 라우터에서 token query param도 허용하도록 처리
+    </script>
+</body>
+</html>

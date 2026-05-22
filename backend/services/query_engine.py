@@ -1,76 +1,57 @@
 import os
-import json
 from services.gemini_client import call_gemini_json, call_gemini
-from services.categorizer import get_categories
 
-STORAGE_DIR = "storage"
+RELEVANCE_CUTOFF = 2  # 0 매우높음 | 1 높음 | 2 보통 | 3 낮음(무시) | 4 관련없음(무시)
 
-def prioritize_categories(question: str, history: list, categories: list[dict]) -> list[dict]:
-    """
-    질문 기반으로 대카테고리 우선순위 분류 (0~3)
-    0: 가능성 높음, 1: 가능성 있음, 2: 낮음, 3: 관련 없음
-    """
-    cat_list = "\n".join([f"{i+1}. {c['name']}: {c['description']}" for i, c in enumerate(categories)])
-    history_text = "\n".join([f"{m.get('role', 'user')}: {m.get('content', '')}" for m in history[-4:]])
+
+def _storage(admin_id: int) -> str:
+    return os.path.join("storage", str(admin_id))
+
+
+def rank_dir_items(question: str, history: list, items: list) -> list:
+    """현재 디렉토리 항목들을 이름 기반으로 관련도 순위 정렬, 임계값 초과 항목 제거"""
+    if not items:
+        return []
+
+    history_text = "\n".join([
+        f"{m.get('role','user')}: {m.get('content','')}" for m in history[-2:]
+    ])
+    names_list = "\n".join([
+        f"{i+1}. [{item['type']}] {item['name']}" for i, item in enumerate(items)
+    ])
 
     prompt = f"""사용자 질문: {question}
-최근 대화:
-{history_text}
+최근 대화: {history_text}
 
-다음 카테고리 목록에서 질문의 답변이 있을 가능성을 분류해줘.
-0: 가능성 높음 | 1: 가능성 있음 | 2: 가능성 낮음 | 3: 관련 없음
+다음 파일/폴더 이름 중 질문의 답변이 있을 가능성을 점수로 매겨줘.
+0: 매우 높음 | 1: 높음 | 2: 보통 | 3: 낮음 | 4: 관련 없음
 
-{cat_list}
+{names_list}
 
 JSON으로만 응답:
-{{"priorities": [{{"category": "카테고리명", "score": 0}}]}}"""
+{{"rankings": [{{"name": "이름", "score": 0}}]}}"""
 
     try:
         result = call_gemini_json(prompt)
-        priorities = result.get("priorities", [])
-        # score 오름차순 정렬, score 3 제외
-        sorted_cats = sorted(
-            [p for p in priorities if p.get("score", 3) < 3],
-            key=lambda x: x.get("score", 3)
-        )
-        return sorted_cats
+        score_map = {r["name"]: r.get("score", 4) for r in result.get("rankings", [])}
+        for item in items:
+            item["score"] = score_map.get(item["name"], 4)
+        filtered = [item for item in items if item["score"] <= RELEVANCE_CUTOFF]
+        return sorted(filtered, key=lambda x: x["score"])
     except Exception as e:
-        print(f"Error prioritizing categories: {e}")
-        # 에러 발생 시 모든 대카테고리를 동등한 우선순위로 반환
-        return [{"category": c["name"], "score": 1} for c in categories]
+        print(f"Error ranking items: {e}")
+        return items
 
-def prioritize_sub_categories(question: str, category_name: str, sub_categories: list[str]) -> list[str]:
-    """소카테고리 우선순위 분류"""
-    sub_list = "\n".join([f"{i+1}. {s}" for i, s in enumerate(sub_categories)])
 
-    prompt = f"""사용자 질문: {question}
-카테고리: {category_name}
-
-다음 소카테고리 중 답변이 있을 가능성 순서대로 정렬해줘.
-관련 없는 항목은 제외해도 돼.
-
-{sub_list}
-
-JSON으로만 응답:
-{{"ordered": ["소카테고리명1", "소카테고리명2"]}}"""
-
-    try:
-        result = call_gemini_json(prompt)
-        return result.get("ordered", [])
-    except Exception as e:
-        print(f"Error prioritizing subcategories: {e}")
-        return sub_categories
-
-def check_found(question: str, category: str, sub: str, content: str) -> dict:
-    """해당 소카테고리 내용에서 답변 가능 여부 판단"""
+def check_found(question: str, file_name: str, content: str) -> dict:
     if not content.strip():
-        return {"found": False, "relevant_sections": [], "source": f"{category} > {sub}"}
+        return {"found": False, "relevant_sections": []}
 
     prompt = f"""사용자 질문: {question}
 
 다음 규정 내용에서 질문에 대한 답변을 찾을 수 있어?
 
-[{category} > {sub}]
+[{file_name}]
 {content[:4000]}
 
 JSON으로만 응답:
@@ -81,19 +62,19 @@ JSON으로만 응답:
 
     try:
         result = call_gemini_json(prompt)
-        result["source"] = f"{category} > {sub}"
-        # found 값을 boolean으로 강제 변환
         if isinstance(result.get("found"), str):
             result["found"] = result["found"].lower() == "true"
         return result
     except Exception as e:
-        print(f"Error checking found in {category} > {sub}: {e}")
-        return {"found": False, "relevant_sections": [], "source": f"{category} > {sub}"}
+        print(f"Error checking found in {file_name}: {e}")
+        return {"found": False, "relevant_sections": []}
 
-def generate_answer(question: str, source: str, relevant_sections: list[str], history: list) -> str:
-    """답변 생성"""
+
+def generate_answer(question: str, source: str, relevant_sections: list, history: list) -> str:
     sections_text = "\n".join(relevant_sections)
-    history_text = "\n".join([f"{m.get('role', 'user')}: {m.get('content', '')}" for m in history[-4:]])
+    history_text = "\n".join([
+        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in history[-4:]
+    ])
 
     prompt = f"""사용자 질문: {question}
 
@@ -113,24 +94,26 @@ def generate_answer(question: str, source: str, relevant_sections: list[str], hi
 
     return call_gemini(prompt)
 
-def generate_fallback(path_taken: list[dict]) -> str:
-    """답변 못 찾았을 때 fallback 응답"""
-    searched = "\n".join([f"- {p['category']} > {p['sub']}" for p in path_taken])
+
+def generate_fallback(path_taken: list) -> str:
+    searched = "\n".join([
+        f"- {'📁' if p['type'] == '폴더' else '📄'} {p['name']}" for p in path_taken
+    ])
     return f"""현재 등록된 규정에서 관련 내용을 찾을 수 없었습니다.
 
 **탐색한 항목:**
-{searched if searched else "- 탐색된 카테고리 없음"}
+{searched if searched else "- 탐색된 항목 없음"}
 
 해당 내용은 담당 부서에 직접 문의해 주시기 바랍니다."""
 
+
 def decide_research(question: str, prev_answer: str, prev_source: str) -> bool:
-    """후속 질문 시 재탐색 필요 여부 판단"""
     prompt = f"""이전 답변: {prev_answer}
 이전 출처: {prev_source}
 새로운 사용자 메시지: {question}
 
 새로운 정보를 바탕으로 기존 규정 내용만으로 답변이 가능해,
-아니면 다른 카테고리 추가 탐색이 필요해?
+아니면 다른 항목 추가 탐색이 필요해?
 
 JSON으로만: {{"need_research": true 또는 false}}"""
 
@@ -144,31 +127,83 @@ JSON으로만: {{"need_research": true 또는 false}}"""
         print(f"Error deciding research need: {e}")
         return True
 
-def run_query(question: str, history: list) -> dict:
-    """
-    전체 질문 처리 파이프라인
-    반환: { answer, source, relevant_sections, path_taken, found }
-    """
-    categories = get_categories()
+
+def search_dir(question: str, history: list, dir_path: str, storage_base: str,
+               path_taken: list, depth: int = 0, max_depth: int = 6) -> dict | None:
+    """재귀적 디렉토리 탐색 — 이름 기반 관련도 순위로 가지치기"""
+    if depth > max_depth:
+        return None
+
+    try:
+        entries = list(os.scandir(dir_path))
+    except Exception:
+        return None
+
+    items = []
+    for entry in entries:
+        if entry.name == "categories.json":
+            continue
+        if entry.is_dir():
+            items.append({"name": entry.name, "path": entry.path, "type": "폴더"})
+        elif entry.is_file() and entry.name.endswith(".txt"):
+            items.append({"name": entry.name[:-4], "path": entry.path, "type": "파일"})
+
+    if not items:
+        return None
+
+    ranked = rank_dir_items(question, history, items)
+
+    for item in ranked:
+        if item["type"] == "폴더":
+            path_taken.append({"name": item["name"], "type": "폴더", "found": False})
+            result = search_dir(question, history, item["path"], storage_base,
+                                path_taken, depth + 1, max_depth)
+            if result:
+                return result
+        else:
+            try:
+                with open(item["path"], "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception:
+                continue
+
+            check = check_found(question, item["name"], content)
+            path_taken.append({"name": item["name"], "type": "파일", "found": check["found"]})
+
+            if check["found"]:
+                rel = os.path.relpath(item["path"], storage_base).replace("\\", "/")
+                rel = rel[:-4] if rel.endswith(".txt") else rel
+                answer = generate_answer(question, rel, check["relevant_sections"], history)
+                return {
+                    "answer": answer,
+                    "source": rel,
+                    "relevant_sections": check["relevant_sections"],
+                    "path_taken": path_taken,
+                    "found": True
+                }
+
+    return None
+
+
+def run_query(question: str, history: list, admin_id: int) -> dict:
+    storage = _storage(admin_id)
     path_taken = []
 
-    # 후속 질문이고 재탐색 불필요한 경우
     if history:
         last = history[-1]
         if last.get("role") == "assistant" and last.get("source"):
             need = decide_research(question, last["content"], last["source"])
             if not need:
-                # 기존 출처 내용으로 바로 답변
                 source = last["source"]
                 try:
-                    cat_name, sub_name = source.split(" > ")
-                    content_path = os.path.join(STORAGE_DIR, cat_name, f"{sub_name}.txt")
-                    if os.path.exists(content_path):
-                        with open(content_path, "r", encoding="utf-8") as f:
+                    file_path = os.path.join(storage, source.replace("/", os.sep) + ".txt")
+                    if os.path.exists(file_path):
+                        with open(file_path, "r", encoding="utf-8") as f:
                             content = f.read()
-                        check = check_found(question, cat_name, sub_name, content)
+                        check = check_found(question, os.path.basename(source), content)
                         if check["found"]:
-                            answer = generate_answer(question, source, check["relevant_sections"], history)
+                            answer = generate_answer(question, source,
+                                                     check["relevant_sections"], history)
                             return {
                                 "answer": answer,
                                 "source": source,
@@ -177,50 +212,12 @@ def run_query(question: str, history: list) -> dict:
                                 "found": True
                             }
                 except Exception as ex:
-                    print(f"Error processing follow-up question on existing source: {ex}")
+                    print(f"Error processing follow-up: {ex}")
 
-    # 대카테고리 우선순위 분류
-    priority_cats = prioritize_categories(question, history, categories)
+    result = search_dir(question, history, storage, storage, path_taken)
+    if result:
+        return result
 
-    for cat_item in priority_cats:
-        cat_name = cat_item["category"]
-        cat_data = next((c for c in categories if c["name"] == cat_name), None)
-        if not cat_data:
-            continue
-
-        # 소카테고리 우선순위 분류
-        ordered_subs = prioritize_sub_categories(question, cat_name, cat_data["sub_categories"])
-
-        for sub in ordered_subs:
-            content_path = os.path.join(STORAGE_DIR, cat_name, f"{sub}.txt")
-            if not os.path.exists(content_path):
-                continue
-
-            try:
-                with open(content_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            except Exception as e:
-                print(f"Error reading file {content_path}: {e}")
-                continue
-
-            check = check_found(question, cat_name, sub, content)
-            path_taken.append({
-                "category": cat_name,
-                "sub": sub,
-                "found": check["found"]
-            })
-
-            if check["found"]:
-                answer = generate_answer(question, check["source"], check["relevant_sections"], history)
-                return {
-                    "answer": answer,
-                    "source": check["source"],
-                    "relevant_sections": check["relevant_sections"],
-                    "path_taken": path_taken,
-                    "found": True
-                }
-
-    # 모든 카테고리 소진 → fallback
     return {
         "answer": generate_fallback(path_taken),
         "source": None,
