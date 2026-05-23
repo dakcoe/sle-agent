@@ -143,6 +143,29 @@ export default function ChatPage() {
     }
   }
 
+  function renderBreadcrumb(steps: PathStep[]) {
+    const folders = steps.filter(s => s.type === 'folder');
+    const files = steps.filter(s => s.type === 'file');
+    const parts: React.ReactNode[] = [];
+
+    folders.forEach((f, i) => {
+      if (i === 0) parts.push(<i key={`fi${i}`} className="fa-solid fa-folder bc-folder-icon" />);
+      else parts.push(<span key={`sep${i}`} className="bc-sep">/</span>);
+      parts.push(<span key={`fn${i}`} className="bc-name">{f.name}</span>);
+    });
+
+    if (files.length > 0) {
+      parts.push(<span key="filesep" className="bc-sep">/</span>);
+      parts.push(<i key="fileicon" className="fa-solid fa-file-lines bc-file-icon" />);
+      files.forEach((f, i) => {
+        if (i > 0) parts.push(<span key={`comma${i}`} className="bc-file-sep">,</span>);
+        parts.push(<span key={`ff${i}`} className="bc-name bc-file-name">{f.name}</span>);
+      });
+    }
+
+    return parts;
+  }
+
   function escapeHtml(str: string) {
     return str
       .replace(/&/g, '&amp;')
@@ -189,19 +212,9 @@ export default function ChatPage() {
                     : escapeHtml(msg.content).replace(/\n/g, '<br>'),
                 }}
               />
-              {msg.source && (
-                <div className="msg-source">
-                  <i className="fa-solid fa-location-dot"></i> {msg.source}
-                </div>
-              )}
               {msg.pathTaken && msg.pathTaken.length > 0 && (
-                <div className="msg-path">
-                  {msg.pathTaken.map((p, j) => (
-                    <span key={j} className={`path-step${p.found ? ' found' : ''}`}>
-                      <i className={`fa-solid ${p.type === 'folder' ? 'fa-folder' : 'fa-file-lines'}`}></i>
-                      {' '}{p.name}
-                    </span>
-                  ))}
+                <div className="msg-breadcrumb">
+                  {renderBreadcrumb(msg.pathTaken)}
                 </div>
               )}
             </div>
@@ -215,7 +228,7 @@ export default function ChatPage() {
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder="예: 육아휴직 신청 기간과 조건이 어떻게 되나요?"
+            placeholder="예: 2박 3일로 부산 출장을 가야하는데, 여비 지급 기준이나 금액이 어떻게 되나요?"
             autoComplete="off"
             disabled={loading}
           />

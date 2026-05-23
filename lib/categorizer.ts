@@ -31,19 +31,26 @@ export async function proposeCategories(
   filename: string,
   content: string
 ): Promise<TreeNode[]> {
-  const prompt = `다음 문서의 내용을 분석해서 계층적 카테고리 트리를 제안해줘.
+  // Sample beginning + middle of document to avoid over-indexing on table of contents
+  const len = content.length;
+  const sample =
+    content.slice(0, 1500) +
+    (len > 3000 ? '\n...\n' + content.slice(Math.floor(len / 2), Math.floor(len / 2) + 1000) : '');
+
+  const prompt = `다음 문서의 핵심 주제를 분석해서 간결한 카테고리 트리를 제안해줘.
 
 파일명: ${filename}
 내용 (일부):
-${content.slice(0, 3000)}
+${sample}
 
 규칙:
-- 최대 4단계 깊이의 트리 구조
-- 각 노드는 name과 선택적 children을 가짐
-- 리프 노드(children 없음)는 실제 저장될 파일
+- 이 문서 전체를 대표하는 최상위 폴더 1개만 만들 것
+- 그 아래 핵심 주제별 파일(리프 노드)을 최대 6개까지만 만들 것
+- 필요하면 중간 폴더를 1단계 추가할 수 있으나, 전체 깊이는 최대 3단계 이내
+- 전체 리프 노드(파일) 수는 반드시 6개 이하
+- 목차나 세부 절(節)을 그대로 나열하지 말고 대주제로 묶을 것
 - 폴더명과 파일명은 한국어로, 내용을 잘 나타내도록
-- 파일명에 .txt, .md, .pdf 같은 확장자를 절대 포함하지 말 것
-- 너무 많은 분류는 피하고 내용에 맞게 간결하게
+- 파일명에 확장자(.txt 등)를 절대 포함하지 말 것
 
 JSON으로만 응답:
 {"tree": [{"name": "폴더명", "children": [{"name": "파일명"}]}]}`;

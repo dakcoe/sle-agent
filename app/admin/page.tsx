@@ -381,7 +381,7 @@ function DocsPanel() {
       </div>
 
       {progress && (
-        <div className="card">
+        <div className="card progress-pulsing">
           <div className="progress-title">
             <span>문서 분류 및 가공 중...</span>
             <span>{progress.pct}%</span>
@@ -615,6 +615,31 @@ function FilesPanel() {
     } else showToast('이동 실패', 'error');
   }
 
+  async function renameFolder(oldPath: string, newName: string) {
+    const newName_ = newName.trim();
+    if (!newName_ || newName_ === oldPath.split('/').pop()) return;
+    const parent = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+    const newPath = parent ? `${parent}/${newName_}` : newName_;
+    const res = await authFetch('/api/files/rename-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: oldPath, to: newPath }),
+    });
+    if (res.ok) {
+      if (currentPath?.startsWith(oldPath + '/')) {
+        setCurrentPath(currentPath.replace(oldPath, newPath));
+      }
+      if (currentFolder === oldPath || currentFolder.startsWith(oldPath + '/')) {
+        setCurrentFolder(currentFolder.replace(oldPath, newPath));
+      }
+      loadTree();
+      showToast('폴더명이 변경되었습니다');
+    } else {
+      const data = await res.json();
+      showToast(data.error || '이름 변경 실패', 'error');
+    }
+  }
+
   return (
     <section className="admin-panel">
       <h2 className="panel-title"><i className="fa-solid fa-folder-open"></i> 파일 매니저</h2>
@@ -637,7 +662,7 @@ function FilesPanel() {
           <div className="file-tree">
             {tree.length === 0
               ? <div className="empty-state"><p>파일이 없습니다</p></div>
-              : <FileTree nodes={tree} currentPath={currentPath} currentFolder={currentFolder} onOpen={openFile} onDeleteFolder={deleteFolder} onSelectFolder={setCurrentFolder} />
+              : <FileTree nodes={tree} currentPath={currentPath} currentFolder={currentFolder} onOpen={openFile} onDeleteFolder={deleteFolder} onSelectFolder={setCurrentFolder} onRenameFolder={renameFolder} />
             }
           </div>
         </div>
@@ -692,7 +717,7 @@ function FilesPanel() {
 }
 
 function FileTree({
-  nodes, currentPath, currentFolder, onOpen, onDeleteFolder, onSelectFolder,
+  nodes, currentPath, currentFolder, onOpen, onDeleteFolder, onSelectFolder, onRenameFolder,
 }: {
   nodes: TreeNode[];
   currentPath: string | null;
@@ -700,8 +725,12 @@ function FileTree({
   onOpen: (path: string) => void;
   onDeleteFolder: (path: string) => void;
   onSelectFolder: (path: string) => void;
+  onRenameFolder: (oldPath: string, newName: string) => void;
 }) {
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   function toggleFolder(path: string) {
     setOpenFolders(prev => {
@@ -712,29 +741,67 @@ function FileTree({
     });
   }
 
+  function startEdit(e: React.MouseEvent, item: TreeNode) {
+    e.stopPropagation();
+    setEditingPath(item.path);
+    setEditValue(item.name);
+    setTimeout(() => { editInputRef.current?.select(); }, 30);
+  }
+
+  function commitEdit(path: string) {
+    if (editValue.trim()) onRenameFolder(path, editValue.trim());
+    setEditingPath(null);
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent, path: string) {
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(path); }
+    if (e.key === 'Escape') setEditingPath(null);
+  }
+
   function renderNodes(items: TreeNode[]) {
     return items.map(item => {
       if (item.type === 'folder') {
         const isOpen = openFolders.has(item.path);
         const isActive = currentFolder === item.path;
+        const isEditing = editingPath === item.path;
         return (
           <div key={item.path} className={`tree-folder${isOpen ? ' open' : ''}`}>
             <div
               className={`tree-folder-label${isActive ? ' active' : ''}`}
-              onClick={() => { toggleFolder(item.path); onSelectFolder(item.path); }}
+              onClick={() => { if (!isEditing) { toggleFolder(item.path); onSelectFolder(item.path); } }}
             >
               <span className="folder-label-text">
                 <i className={`fa-solid ${isOpen ? 'fa-folder-open' : 'fa-folder'}`}></i>
-                {item.name}
+                {isEditing ? (
+                  <input
+                    ref={editInputRef}
+                    className="folder-rename-input"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={() => commitEdit(item.path)}
+                    onKeyDown={e => handleEditKeyDown(e, item.path)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                ) : (
+                  item.name
+                )}
               </span>
-              <button
-                className="btn btn-icon tree-delete-folder"
-                title="폴더 삭제"
-                style={{ padding: '2px 5px', fontSize: '0.7rem' }}
-                onClick={e => { e.stopPropagation(); onDeleteFolder(item.path); }}
-              >
-                <i className="fa-solid fa-trash"></i>
-              </button>
+              <span className="tree-folder-actions">
+                <button
+                  className="btn btn-icon tree-folder-btn"
+                  title="폴더명 수정"
+                  onClick={e => startEdit(e, item)}
+                >
+                  <i className="fa-solid fa-pen"></i>
+                </button>
+                <button
+                  className="btn btn-icon tree-folder-btn tree-delete-folder"
+                  title="폴더 삭제"
+                  onClick={e => { e.stopPropagation(); onDeleteFolder(item.path); }}
+                >
+                  <i className="fa-solid fa-trash"></i>
+                </button>
+              </span>
             </div>
             {isOpen && (
               <div className="tree-folder-children">
